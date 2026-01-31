@@ -16,16 +16,23 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message, isStreaming = false }: MessageBubbleProps) {
   const { theme, isDark } = useTheme();
-  const [copied, setCopied] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const isUser = message.role === "user";
 
-  const handleCopy = useCallback(async () => {
+  const handleCopyCode = useCallback(async (code: string, index: number) => {
+    await Clipboard.setStringAsync(code);
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  }, []);
+
+  const handleCopyAll = useCallback(async () => {
     await Clipboard.setStringAsync(message.content);
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   }, [message.content]);
 
   const renderContent = () => {
@@ -34,19 +41,27 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
     let match;
+    let codeIndex = 0;
 
     while ((match = codeBlockRegex.exec(content)) !== null) {
       if (match.index > lastIndex) {
-        const textBefore = content.slice(lastIndex, match.index);
-        parts.push(
-          <ThemedText key={`text-${lastIndex}`} style={styles.messageText}>
-            {textBefore.trim()}
-          </ThemedText>
-        );
+        const textBefore = content.slice(lastIndex, match.index).trim();
+        if (textBefore) {
+          parts.push(
+            <ThemedText 
+              key={`text-${lastIndex}`} 
+              style={[styles.messageText, isUser && { color: "#FFFFFF" }]}
+            >
+              {textBefore}
+            </ThemedText>
+          );
+        }
       }
 
       const language = match[1] || "code";
       const code = match[2].trim();
+      const currentIndex = codeIndex;
+      codeIndex++;
 
       parts.push(
         <View
@@ -54,15 +69,26 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
           style={[styles.codeBlock, { backgroundColor: theme.codeBackground }]}
         >
           <View style={[styles.codeHeader, { borderBottomColor: theme.border }]}>
-            <ThemedText style={[styles.codeLanguage, { color: theme.textTertiary }]}>
-              {language}
-            </ThemedText>
-            <Pressable onPress={handleCopy} style={styles.copyButton}>
+            <View style={styles.codeHeaderLeft}>
+              <View style={[styles.languageBadge, { backgroundColor: theme.link + "30" }]}>
+                <ThemedText style={[styles.codeLanguage, { color: theme.link }]}>
+                  {language.toUpperCase()}
+                </ThemedText>
+              </View>
+            </View>
+            <Pressable 
+              onPress={() => handleCopyCode(code, currentIndex)} 
+              style={styles.copyButton}
+              hitSlop={8}
+            >
               <Feather
-                name={copied ? "check" : "copy"}
+                name={copiedIndex === currentIndex ? "check" : "copy"}
                 size={14}
-                color={copied ? theme.success : theme.textTertiary}
+                color={copiedIndex === currentIndex ? theme.success : theme.textTertiary}
               />
+              <ThemedText style={[styles.copyText, { color: theme.textTertiary }]}>
+                {copiedIndex === currentIndex ? "Copied" : "Copy"}
+              </ThemedText>
             </Pressable>
           </View>
           <ThemedText
@@ -83,7 +109,10 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
       const remainingText = content.slice(lastIndex).trim();
       if (remainingText) {
         parts.push(
-          <ThemedText key={`text-${lastIndex}`} style={styles.messageText}>
+          <ThemedText 
+            key={`text-${lastIndex}`} 
+            style={[styles.messageText, isUser && { color: "#FFFFFF" }]}
+          >
             {remainingText}
           </ThemedText>
         );
@@ -92,7 +121,10 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
 
     if (parts.length === 0) {
       parts.push(
-        <ThemedText key="full" style={styles.messageText}>
+        <ThemedText 
+          key="full" 
+          style={[styles.messageText, isUser && { color: "#FFFFFF" }]}
+        >
           {content}
         </ThemedText>
       );
@@ -112,7 +144,7 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
         <View
           style={[
             styles.avatar,
-            { backgroundColor: isDark ? theme.link : theme.link },
+            { backgroundColor: theme.link },
           ]}
         >
           <Feather name="cpu" size={16} color="#FFFFFF" />
@@ -183,16 +215,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
+    paddingVertical: Spacing.sm,
     borderBottomWidth: 1,
   },
+  codeHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  languageBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+  },
   codeLanguage: {
-    fontSize: 12,
-    fontWeight: "500",
-    textTransform: "uppercase",
+    fontSize: 10,
+    fontWeight: "600",
   },
   copyButton: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: Spacing.xs,
+    gap: 4,
+  },
+  copyText: {
+    fontSize: 11,
   },
   codeText: {
     fontSize: 13,

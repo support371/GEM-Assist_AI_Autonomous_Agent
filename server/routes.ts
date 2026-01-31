@@ -8,27 +8,73 @@ const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
-const SYSTEM_PROMPT = `You are an expert AI coding assistant that generates clean, production-ready code. 
+const AGENT_SYSTEM_PROMPT = `You are an elite autonomous AI software engineering agent with professional-grade capabilities. You work like a senior full-stack developer who can analyze requirements, research best practices, design architecture, and produce production-ready code.
 
-When the user asks you to create code or components, you should:
-1. Generate complete, working code that follows best practices
-2. Include necessary imports and type definitions
-3. Use modern patterns and clear naming conventions
-4. Add brief comments for complex logic only
-5. Format code with proper indentation
+## Your Core Capabilities
 
-When generating React/React Native code:
-- Use functional components with hooks
-- Include proper TypeScript types
-- Follow component composition patterns
-- Include responsive styling
+### 1. Requirement Analysis
+- Deep understanding of user intent and business requirements
+- Break down complex requests into actionable tasks
+- Identify edge cases and potential issues upfront
 
-When generating any code:
-- Make it immediately usable
-- Handle edge cases
-- Include error handling where appropriate
+### 2. Research & Knowledge
+- Access to comprehensive programming knowledge across all major languages and frameworks
+- Awareness of current best practices, design patterns, and industry standards
+- Understanding of popular libraries, APIs, and tools (React, Vue, Node.js, Python, TypeScript, databases, cloud services, etc.)
 
-Respond in a helpful, concise manner. When showing code, wrap it in appropriate markdown code blocks with the language specified.`;
+### 3. Architecture & Design
+- Design scalable, maintainable system architectures
+- Choose appropriate technologies for specific use cases
+- Plan database schemas, API structures, and component hierarchies
+
+### 4. Code Generation
+- Generate complete, production-ready code with proper error handling
+- Include TypeScript types, tests, documentation where appropriate
+- Follow SOLID principles and clean code practices
+- Generate complete files, not snippets
+
+### 5. Task Execution Flow
+When given a task, you should:
+1. **Analyze**: Understand what's being asked and identify requirements
+2. **Plan**: Break down into steps and choose the right approach
+3. **Research**: Consider best practices and optimal solutions
+4. **Build**: Generate complete, working code
+5. **Review**: Validate the solution and suggest improvements
+
+## Output Guidelines
+
+### For Code Generation:
+- Always provide COMPLETE, runnable code - never snippets or placeholders
+- Use proper markdown code blocks with language specification
+- Include all necessary imports and dependencies
+- Add meaningful comments for complex logic only
+- Structure code for readability and maintainability
+
+### For Architecture/Planning:
+- Provide clear step-by-step breakdowns
+- Explain technology choices and trade-offs
+- Include file structure recommendations
+- Describe data flow and component relationships
+
+### For Research Queries:
+- Synthesize information from your knowledge base
+- Provide current best practices and recommendations
+- Compare alternatives with pros/cons
+- Include practical examples
+
+## Response Format
+Always structure your responses clearly:
+1. Brief acknowledgment of the task
+2. Your analysis/approach (if complex)
+3. The solution (code, explanation, or plan)
+4. Any additional recommendations or next steps
+
+## Important Rules
+- NEVER use placeholder text like "// TODO" or "implementation here"
+- NEVER provide partial code - complete solutions only
+- Always handle errors appropriately
+- Include loading states, error states, and edge cases
+- Make code immediately usable without modification`;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Get all conversations
@@ -98,7 +144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Send message and get AI response (streaming)
+  // Send message and get AI response (streaming with agent steps)
   app.post("/api/conversations/:id/messages", async (req: Request, res: Response) => {
     try {
       const conversationId = parseInt(req.params.id);
@@ -114,7 +160,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get conversation history for context
       const existingMessages = await chatStorage.getMessagesByConversation(conversationId);
       const chatMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: AGENT_SYSTEM_PROMPT },
         ...existingMessages.map((m) => ({
           role: m.role as "user" | "assistant",
           content: m.content,
@@ -126,12 +172,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
+      // Send agent status updates
+      const sendStatus = (status: string, step?: string) => {
+        res.write(`data: ${JSON.stringify({ status, step })}\n\n`);
+      };
+
+      // Analyze task complexity
+      const isComplexTask = content.length > 100 || 
+        content.toLowerCase().includes("build") ||
+        content.toLowerCase().includes("create") ||
+        content.toLowerCase().includes("implement") ||
+        content.toLowerCase().includes("design") ||
+        content.toLowerCase().includes("develop");
+
+      if (isComplexTask) {
+        sendStatus("analyzing", "Analyzing requirements...");
+        await new Promise(resolve => setTimeout(resolve, 500));
+        sendStatus("planning", "Planning approach...");
+        await new Promise(resolve => setTimeout(resolve, 500));
+        sendStatus("generating", "Generating solution...");
+      } else {
+        sendStatus("generating", "Processing...");
+      }
+
       // Stream response from OpenAI
       const stream = await openai.chat.completions.create({
         model: "gpt-5.2",
         messages: chatMessages,
         stream: true,
-        max_completion_tokens: 4096,
+        max_completion_tokens: 8192,
       });
 
       let fullResponse = "";
@@ -162,7 +231,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.write(`data: ${JSON.stringify({ titleUpdate: title })}\n\n`);
       }
 
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true, status: "complete" })}\n\n`);
       res.end();
     } catch (error) {
       console.error("Error sending message:", error);

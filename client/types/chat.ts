@@ -18,4 +18,19 @@ export interface StreamEvent {
   done?: boolean;
   error?: string;
   titleUpdate?: string;
+  status?: "analyzing" | "planning" | "researching" | "generating" | "complete";
+  step?: string;
+}
+
+export interface CodeBlock {
+  language: string;
+  code: string;
+  filename?: string;
+}
+
+export interface AgentTask {
+  id: string;
+  name: string;
+  status: "pending" | "running" | "complete";
+  description?: string;
 }
