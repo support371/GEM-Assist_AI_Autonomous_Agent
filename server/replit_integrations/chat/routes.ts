@@ -1,36 +1,13 @@
 import type { Express, Request, Response } from "express";
-import { createServer, type Server } from "node:http";
 import OpenAI from "openai";
-import { chatStorage } from "./replit_integrations/chat/storage";
+import { chatStorage } from "./storage";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
-const SYSTEM_PROMPT = `You are an expert AI coding assistant that generates clean, production-ready code. 
-
-When the user asks you to create code or components, you should:
-1. Generate complete, working code that follows best practices
-2. Include necessary imports and type definitions
-3. Use modern patterns and clear naming conventions
-4. Add brief comments for complex logic only
-5. Format code with proper indentation
-
-When generating React/React Native code:
-- Use functional components with hooks
-- Include proper TypeScript types
-- Follow component composition patterns
-- Include responsive styling
-
-When generating any code:
-- Make it immediately usable
-- Handle edge cases
-- Include error handling where appropriate
-
-Respond in a helpful, concise manner. When showing code, wrap it in appropriate markdown code blocks with the language specified.`;
-
-export async function registerRoutes(app: Express): Promise<Server> {
+export function registerChatRoutes(app: Express): void {
   // Get all conversations
   app.get("/api/conversations", async (req: Request, res: Response) => {
     try {
@@ -70,22 +47,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update conversation title
-  app.patch("/api/conversations/:id", async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const { title } = req.body;
-      const conversation = await chatStorage.updateConversationTitle(id, title);
-      if (!conversation) {
-        return res.status(404).json({ error: "Conversation not found" });
-      }
-      res.json(conversation);
-    } catch (error) {
-      console.error("Error updating conversation:", error);
-      res.status(500).json({ error: "Failed to update conversation" });
-    }
-  });
-
   // Delete conversation
   app.delete("/api/conversations/:id", async (req: Request, res: Response) => {
     try {
@@ -104,22 +65,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const conversationId = parseInt(req.params.id);
       const { content } = req.body;
 
-      if (!content || typeof content !== "string") {
-        return res.status(400).json({ error: "Message content is required" });
-      }
-
       // Save user message
       await chatStorage.createMessage(conversationId, "user", content);
 
       // Get conversation history for context
-      const existingMessages = await chatStorage.getMessagesByConversation(conversationId);
-      const chatMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...existingMessages.map((m) => ({
-          role: m.role as "user" | "assistant",
-          content: m.content,
-        })),
-      ];
+      const messages = await chatStorage.getMessagesByConversation(conversationId);
+      const chatMessages = messages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
 
       // Set up SSE
       res.setHeader("Content-Type", "text/event-stream");
@@ -128,10 +82,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Stream response from OpenAI
       const stream = await openai.chat.completions.create({
-        model: "gpt-5.2",
+        model: "gpt-5.1",
         messages: chatMessages,
         stream: true,
-        max_completion_tokens: 4096,
+        max_completion_tokens: 2048,
       });
 
       let fullResponse = "";
@@ -147,25 +101,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save assistant message
       await chatStorage.createMessage(conversationId, "assistant", fullResponse);
 
-      // Update conversation title if it's the first message
-      if (existingMessages.length === 1) {
-        const titleResponse = await openai.chat.completions.create({
-          model: "gpt-5-nano",
-          messages: [
-            { role: "system", content: "Generate a very short title (3-5 words) for this conversation based on the user's first message. Return only the title, nothing else." },
-            { role: "user", content: existingMessages[0].content },
-          ],
-          max_completion_tokens: 20,
-        });
-        const title = titleResponse.choices[0]?.message?.content?.trim() || "New Chat";
-        await chatStorage.updateConversationTitle(conversationId, title);
-        res.write(`data: ${JSON.stringify({ titleUpdate: title })}\n\n`);
-      }
-
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
     } catch (error) {
       console.error("Error sending message:", error);
+      // Check if headers already sent (SSE streaming started)
       if (res.headersSent) {
         res.write(`data: ${JSON.stringify({ error: "Failed to send message" })}\n\n`);
         res.end();
@@ -174,7 +114,5 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
   });
-
-  const httpServer = createServer(app);
-  return httpServer;
 }
+
