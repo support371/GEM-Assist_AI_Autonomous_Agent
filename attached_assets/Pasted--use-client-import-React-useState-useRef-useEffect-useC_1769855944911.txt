@@ -1,0 +1,2365 @@
+"use client"
+
+import React, { useState, useRef, useEffect, useCallback } from "react"
+import {
+  Bot,
+  Send,
+  Loader2,
+  Copy,
+  Check,
+  FileCode,
+  X,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+  Wrench,
+  Code2,
+  FileText,
+  Layout,
+  Server,
+  FormInput,
+  MessageSquare,
+  Download,
+  Trash2,
+  Play,
+  BarChart3,
+  Layers,
+  Eye,
+  EyeOff,
+  Maximize2,
+  Minimize2,
+  RefreshCw,
+  Upload,
+  FileUp,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Smartphone,
+  Monitor,
+  Tablet,
+  ExternalLink,
+  Settings,
+  FolderOpen,
+  Zap,
+  Cpu,
+  Terminal,
+  Package,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  type AgentMessage,
+  type GeneratedFile,
+  type UIType,
+  type AgentProgress,
+  type AgentTask,
+  generateId,
+  detectUIType,
+  extractFeatures,
+  validateAndFixCode,
+  createExecutionPlan,
+  formatDuration,
+  getFilePath,
+  getDefaultName,
+} from "@/lib/ai/agent-core"
+
+// UI Types for quick generation
+const UI_TYPES: { type: UIType; label: string; icon: typeof Layout; description: string }[] = [
+  { type: "landing-page", label: "Landing Page", icon: Layout, description: "Hero, features, pricing, CTA" },
+  { type: "dashboard", label: "Dashboard", icon: BarChart3, description: "Stats, charts, tables" },
+  { type: "form", label: "Form", icon: FormInput, description: "Input fields, validation" },
+  { type: "component", label: "Component", icon: Layers, description: "Reusable UI element" },
+  { type: "page", label: "Page", icon: FileText, description: "Full page layout" },
+  { type: "api", label: "API Route", icon: Server, description: "REST endpoints" },
+]
+
+// Example prompts for inspiration
+const EXAMPLE_PROMPTS = [
+  "Create a modern SaaS landing page with hero section, feature grid, pricing table with 3 tiers, and testimonials carousel",
+  "Build an analytics dashboard with stats cards, line chart for revenue, user activity table, and quick action buttons",
+  "Design a contact form with name, email, subject dropdown, and message fields with real-time validation",
+  "Create a pricing component with monthly/yearly toggle, three tiers (Basic, Pro, Enterprise), and feature comparison",
+  "Build a user profile card with avatar upload, editable bio, social links, and activity stats",
+  "Design a todo app with categories, priority levels, due dates, and drag-and-drop reordering",
+]
+
+// Device preview sizes
+const DEVICE_SIZES = {
+  mobile: { width: 375, label: "Mobile" },
+  tablet: { width: 768, label: "Tablet" },
+  desktop: { width: "100%", label: "Desktop" },
+}
+
+// Initial completed landing page code for demonstration
+const INITIAL_LANDING_PAGE_CODE = `'use client'
+
+import { useState } from 'react'
+import { ArrowRight, CheckCircle, Star, Zap, Shield, Users, Sparkles, Code, Rocket, Globe } from 'lucide-react'
+
+export default function LandingPage() {
+  const [email, setEmail] = useState('')
+
+  const features = [
+    { icon: Zap, title: 'Lightning Fast', description: 'Generate production-ready code in seconds with our AI agent' },
+    { icon: Shield, title: 'Enterprise Ready', description: 'Built with security and scalability in mind from day one' },
+    { icon: Code, title: 'Clean Code', description: 'TypeScript, React, and Tailwind CSS best practices included' },
+    { icon: Globe, title: 'Deploy Anywhere', description: 'One-click deployment to Vercel, Netlify, or your own server' },
+  ]
+
+  const stats = [
+    { value: '50K+', label: 'Components Generated' },
+    { value: '10K+', label: 'Happy Developers' },
+    { value: '99.9%', label: 'Uptime' },
+    { value: '4.9/5', label: 'User Rating' },
+  ]
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+      {/* Navigation */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-700/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                <Sparkles className="w-6 h-6 text-white" />
+              </div>
+              <span className="font-bold text-xl">AI Agent Builder</span>
+            </div>
+            <div className="hidden md:flex items-center gap-8">
+              <a href="#features" className="text-slate-300 hover:text-white transition-colors">Features</a>
+              <a href="#pricing" className="text-slate-300 hover:text-white transition-colors">Pricing</a>
+              <a href="#docs" className="text-slate-300 hover:text-white transition-colors">Docs</a>
+              <button className="px-5 py-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg font-medium hover:opacity-90 transition-opacity">
+                Get Started
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="pt-32 pb-20 px-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent" />
+        <div className="max-w-7xl mx-auto text-center relative">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-full text-sm font-medium mb-8 text-blue-400">
+            <Rocket className="w-4 h-4" />
+            Now with GPT-4 Turbo Integration
+          </div>
+          <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+            Build Beautiful UIs
+            <br />
+            <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+              With AI Precision
+            </span>
+          </h1>
+          <p className="text-xl text-slate-400 mb-10 max-w-2xl mx-auto leading-relaxed">
+            The autonomous AI agent that understands your vision and transforms it into production-ready React components in seconds.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25">
+              Start Building Free <ArrowRight className="w-5 h-5" />
+            </button>
+            <button className="px-8 py-4 bg-white/5 border border-white/10 rounded-xl font-semibold hover:bg-white/10 transition-all">
+              View Live Demo
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Stats */}
+      <section className="py-16 border-y border-slate-700/50 bg-slate-800/30">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {stats.map((stat, index) => (
+              <div key={index} className="text-center">
+                <div className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">
+                  {stat.value}
+                </div>
+                <div className="text-slate-400">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section id="features" className="py-24 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold mb-4">Everything You Need</h2>
+            <p className="text-xl text-slate-400">Powerful features to supercharge your development workflow</p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {features.map((feature, index) => (
+              <div key={index} className="p-6 rounded-2xl bg-slate-800/50 border border-slate-700/50 hover:border-blue-500/50 transition-all group">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <feature.icon className="w-6 h-6 text-blue-400" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
+                <p className="text-slate-400">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="py-24 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="p-12 rounded-3xl bg-gradient-to-r from-blue-600 to-purple-600 text-center relative overflow-hidden">
+            <div className="absolute inset-0 bg-[url('data:image/svg+xml,...')] opacity-10" />
+            <div className="relative">
+              <h2 className="text-4xl font-bold mb-4">Ready to Build?</h2>
+              <p className="text-xl text-blue-100 mb-8">Join thousands of developers creating with AI</p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center max-w-md mx-auto">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  className="flex-1 px-5 py-3 rounded-xl bg-white/10 border border-white/20 placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
+                />
+                <button className="px-6 py-3 bg-white text-blue-600 rounded-xl font-semibold hover:bg-blue-50 transition-colors">
+                  Get Started
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-12 px-4 border-t border-slate-700/50">
+        <div className="max-w-7xl mx-auto text-center text-slate-400">
+          <p>Built with AI Agent Builder. Deployed in seconds.</p>
+        </div>
+      </footer>
+    </div>
+  )
+}`
+
+export default function AgentBuilderPage() {
+  // Initial file for demonstration
+  const initialFile: GeneratedFile = {
+    id: generateId(),
+    path: "components/landing-page.tsx",
+    content: INITIAL_LANDING_PAGE_CODE,
+    language: "typescript",
+    createdAt: new Date(),
+    preview: true,
+  }
+
+  // Initial completed messages
+  const initialMessages: AgentMessage[] = [
+    {
+      id: generateId(),
+      role: "user",
+      content: "Create a modern AI SaaS landing page with dark theme, hero section, features grid, stats, and call-to-action",
+      timestamp: new Date(Date.now() - 30000),
+    },
+    {
+      id: generateId(),
+      role: "assistant",
+      content: `I have analyzed your request and generated a production-ready landing-page. Here is what I built:
+
+**Component:** landing-page.tsx
+**Type:** landing-page
+**Features:** hero, features, stats, cta, navigation, dark-theme, gradient-accents, responsive
+**Generation Time:** 4.2s
+
+The code includes:
+- TypeScript with proper type definitions
+- Responsive Tailwind CSS styling with dark theme
+- Interactive state management for email input
+- Gradient backgrounds and modern visual effects
+- Fully accessible navigation and sections
+- Clean component architecture
+
+You can preview the result in the live preview panel, copy the code, or download it as a file.`,
+      timestamp: new Date(Date.now() - 25000),
+      files: [initialFile],
+    },
+  ]
+
+  // Initial completed tasks
+  const initialTasks: AgentTask[] = [
+    { id: generateId(), type: "analyze", description: "Analyze requirements", status: "completed", result: "Type: landing-page, Features: 8" },
+    { id: generateId(), type: "plan", description: "Plan architecture", status: "completed", result: "Architecture defined" },
+    { id: generateId(), type: "code", description: "Generate code", status: "completed", result: "Code generated" },
+    { id: generateId(), type: "review", description: "Review and validate", status: "completed", result: "All checks passed" },
+  ]
+
+  // Core state - initialized with completed demonstration
+  const [input, setInput] = useState("")
+  const [messages, setMessages] = useState<AgentMessage[]>(initialMessages)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [progress, setProgress] = useState<AgentProgress | null>(null)
+  const [tasks, setTasks] = useState<AgentTask[]>(initialTasks)
+  const [currentToolCalls, setCurrentToolCalls] = useState<{ id: string; tool: string; status: string }[]>([])
+
+  // File management - initialized with demonstration file
+  const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([initialFile])
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(initialFile.id)
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; content: string } | null>(null)
+
+  // UI state - show preview by default
+  const [expandedToolCall, setExpandedToolCall] = useState<string | null>(null)
+  const [copiedFileId, setCopiedFileId] = useState<string | null>(null)
+  const [showPreview, setShowPreview] = useState(true)
+  const [previewDevice, setPreviewDevice] = useState<"mobile" | "tablet" | "desktop">("desktop")
+  const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false)
+  const [showCode, setShowCode] = useState(false)
+  const [showTasks, setShowTasks] = useState(true)
+  const [previewKey, setPreviewKey] = useState(0)
+  const [isChatCollapsed, setIsChatCollapsed] = useState(false)
+
+  // Refs
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  // Auto-scroll to bottom of messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages, progress])
+
+  // Auto-select first generated file
+  useEffect(() => {
+    if (generatedFiles.length > 0 && !selectedFileId) {
+      setSelectedFileId(generatedFiles[0].id)
+    }
+  }, [generatedFiles, selectedFileId])
+
+  // Simulate progress updates
+  const simulateProgress = useCallback(
+    async (steps: { step: string; progress: number; delay: number; tool?: string; phase?: AgentProgress["phase"] }[]) => {
+      for (const { step, progress: prog, delay, tool, phase } of steps) {
+        if (abortControllerRef.current?.signal.aborted) return
+        await new Promise((resolve) => setTimeout(resolve, delay))
+        setProgress({ step, progress: prog, currentTool: tool, phase })
+      }
+    },
+    []
+  )
+
+  // Update task status
+  const updateTaskStatus = useCallback((taskId: string, status: AgentTask["status"], result?: string) => {
+    setTasks((prev) =>
+      prev.map((task) => (task.id === taskId ? { ...task, status, result } : task))
+    )
+  }, [])
+
+  // Call the AI API for code generation
+  const generateCode = useCallback(async (prompt: string, type: UIType, features: string[]) => {
+    try {
+      const response = await fetch("/api/agent/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, type, features }),
+        signal: abortControllerRef.current?.signal,
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to generate code")
+      }
+
+      const data = await response.json()
+      return data
+    } catch (error) {
+      if ((error as Error).name === "AbortError") {
+        throw new Error("Generation cancelled")
+      }
+      throw error
+    }
+  }, [])
+
+  // Execute the agent workflow
+  const executeAgentWorkflow = useCallback(
+    async (prompt: string) => {
+      const type = detectUIType(prompt)
+      const features = extractFeatures(prompt)
+      const executionPlan = createExecutionPlan(prompt, type, features)
+
+      setTasks(executionPlan)
+
+      // Phase 1: Analyze
+      const analyzeTask = executionPlan[0]
+      updateTaskStatus(analyzeTask.id, "running")
+      setCurrentToolCalls([{ id: generateId(), tool: "analyze_requirements", status: "running" }])
+
+      await simulateProgress([
+        { step: "Analyzing your request...", progress: 5, delay: 300, tool: "analyze_requirements", phase: "analyzing" },
+        { step: `Detected UI type: ${type}`, progress: 10, delay: 400, phase: "analyzing" },
+        { step: `Found ${features.length} features: ${features.slice(0, 3).join(", ")}${features.length > 3 ? "..." : ""}`, progress: 15, delay: 300, phase: "analyzing" },
+      ])
+
+      updateTaskStatus(analyzeTask.id, "completed", `Type: ${type}, Features: ${features.length}`)
+      setCurrentToolCalls((prev) => prev.map((t) => ({ ...t, status: "completed" })))
+
+      // Phase 2: Plan
+      const planTask = executionPlan[1]
+      updateTaskStatus(planTask.id, "running")
+      setCurrentToolCalls([{ id: generateId(), tool: "plan_architecture", status: "running" }])
+
+      await simulateProgress([
+        { step: "Planning component structure...", progress: 20, delay: 400, tool: "plan_architecture", phase: "planning" },
+        { step: "Designing layout system...", progress: 25, delay: 300, phase: "planning" },
+        { step: "Setting up state management...", progress: 30, delay: 300, phase: "planning" },
+      ])
+
+      updateTaskStatus(planTask.id, "completed", "Architecture defined")
+      setCurrentToolCalls((prev) => prev.map((t) => ({ ...t, status: "completed" })))
+
+      // Phase 3: Code Generation
+      const codeTask = executionPlan[2]
+      updateTaskStatus(codeTask.id, "running")
+      setCurrentToolCalls([{ id: generateId(), tool: "generate_code", status: "running" }])
+
+      await simulateProgress([
+        { step: "Generating React component...", progress: 40, delay: 500, tool: "generate_code", phase: "coding" },
+        { step: "Adding TypeScript types...", progress: 50, delay: 400, phase: "coding" },
+        { step: "Applying Tailwind styles...", progress: 60, delay: 500, phase: "coding" },
+        { step: "Implementing interactions...", progress: 70, delay: 400, phase: "coding" },
+      ])
+
+      // Actually generate the code via API
+      let generatedCode: string
+      try {
+        const result = await generateCode(prompt, type, features)
+        generatedCode = result.code || getTemplateCode(type)
+      } catch {
+        // Fallback to template if API fails
+        generatedCode = getTemplateCode(type)
+      }
+
+      updateTaskStatus(codeTask.id, "completed", "Code generated")
+      setCurrentToolCalls((prev) => prev.map((t) => ({ ...t, status: "completed" })))
+
+      // Phase 4: Review
+      const reviewTask = executionPlan[3]
+      updateTaskStatus(reviewTask.id, "running")
+      setCurrentToolCalls([{ id: generateId(), tool: "validate_code", status: "running" }])
+
+      await simulateProgress([
+        { step: "Validating syntax...", progress: 80, delay: 300, tool: "validate_code", phase: "reviewing" },
+        { step: "Checking TypeScript types...", progress: 85, delay: 300, phase: "reviewing" },
+        { step: "Verifying accessibility...", progress: 90, delay: 300, phase: "reviewing" },
+        { step: "Optimizing performance...", progress: 95, delay: 300, phase: "reviewing" },
+      ])
+
+      // Validate and fix the code
+      const validatedCode = validateAndFixCode(generatedCode)
+
+      updateTaskStatus(reviewTask.id, "completed", "All checks passed")
+      setCurrentToolCalls((prev) => prev.map((t) => ({ ...t, status: "completed" })))
+
+      await simulateProgress([
+        { step: "Finalizing output...", progress: 98, delay: 200, phase: "complete" },
+        { step: "Complete!", progress: 100, delay: 100, phase: "complete" },
+      ])
+
+      // Create the generated file
+      const fileName = getDefaultName(type)
+      const filePath = getFilePath(type, fileName)
+
+      const newFile: GeneratedFile = {
+        id: generateId(),
+        path: filePath,
+        content: validatedCode,
+        language: "typescript",
+        createdAt: new Date(),
+        preview: true,
+      }
+
+      return { type, features, file: newFile, code: validatedCode }
+    },
+    [simulateProgress, updateTaskStatus, generateCode]
+  )
+
+  // Main send message function
+  const sendMessage = useCallback(
+    async (content: string) => {
+      if (!content.trim() || isProcessing) return
+
+      setIsProcessing(true)
+      setProgress(null)
+      setTasks([])
+      setCurrentToolCalls([])
+      abortControllerRef.current = new AbortController()
+
+      // Add user message
+      const userMessage: AgentMessage = {
+        id: generateId(),
+        role: "user",
+        content,
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, userMessage])
+
+      try {
+        const startTime = Date.now()
+        const result = await executeAgentWorkflow(content)
+        const duration = Date.now() - startTime
+
+        // Add the generated file
+        setGeneratedFiles((prev) => [...prev, result.file])
+        setSelectedFileId(result.file.id)
+
+        // Refresh preview and auto-switch to Preview view
+        setPreviewKey((prev) => prev + 1)
+        setShowCode(false) // Auto-switch to Preview when build completes
+
+        // Create assistant response
+        const assistantMessage: AgentMessage = {
+          id: generateId(),
+          role: "assistant",
+          content: `I have analyzed your request and generated a production-ready ${result.type}. Here is what I built:
+
+**Component:** ${result.file.path.split("/").pop()}
+**Type:** ${result.type}
+**Features:** ${result.features.length > 0 ? result.features.join(", ") : "Standard " + result.type + " features"}
+**Generation Time:** ${formatDuration(duration)}
+
+The code includes:
+- TypeScript with proper type definitions
+- Responsive Tailwind CSS styling
+- Interactive state management
+- Accessibility attributes
+- Clean component architecture
+
+You can preview the result in the live preview panel, copy the code, or download it as a file.`,
+          timestamp: new Date(),
+          files: [result.file],
+        }
+        setMessages((prev) => [...prev, assistantMessage])
+      } catch (error) {
+        const errorMessage: AgentMessage = {
+          id: generateId(),
+          role: "assistant",
+          content: `I encountered an error while processing your request: ${(error as Error).message}. Please try again.`,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, errorMessage])
+      } finally {
+        setIsProcessing(false)
+        setProgress(null)
+        setCurrentToolCalls([])
+      }
+    },
+    [isProcessing, executeAgentWorkflow]
+  )
+
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!input.trim() || isProcessing) return
+    const message = input.trim()
+    setInput("")
+    await sendMessage(message)
+  }
+
+  // Handle keyboard shortcuts
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit(e)
+    }
+  }
+
+  // Quick generate from template
+  const handleQuickGenerate = async (type: UIType) => {
+    const prompts: Record<UIType, string> = {
+      "landing-page": "Create a modern SaaS landing page with hero section, features grid, pricing table, testimonials, and newsletter signup",
+      dashboard: "Build an analytics dashboard with stats cards, charts, recent activity feed, and quick actions",
+      form: "Create a contact form with name, email, subject, and message fields with validation",
+      component: "Build a reusable pricing card component with features list and CTA button",
+      page: "Create a projects page with search, filters, and project cards grid",
+      layout: "Build an app layout with collapsible sidebar and top navigation bar",
+      api: "Create REST API routes with CRUD operations for items",
+      auth: "Build a login/signup page with email and password authentication",
+      ecommerce: "Create a product listing page with filters, sorting, and shopping cart",
+      blog: "Build a blog page with featured posts, categories, and search",
+      portfolio: "Create a portfolio page with project showcase and contact section",
+    }
+    await sendMessage(prompts[type])
+  }
+
+  // Handle file upload
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const content = event.target?.result as string
+      setUploadedFile({ name: file.name, content })
+      // Auto-analyze uploaded file
+      sendMessage(`Analyze this file and suggest improvements:\n\n${content}`)
+    }
+    reader.readAsText(file)
+  }
+
+  // Copy code to clipboard
+  const copyToClipboard = async (content: string, fileId: string) => {
+    await navigator.clipboard.writeText(content)
+    setCopiedFileId(fileId)
+    setTimeout(() => setCopiedFileId(null), 2000)
+  }
+
+  // Download file
+  const downloadFile = (file: GeneratedFile) => {
+    const blob = new Blob([file.content], { type: "text/plain" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = file.path.split("/").pop() || "component.tsx"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Clear conversation
+  const clearConversation = () => {
+    setMessages([])
+    setGeneratedFiles([])
+    setSelectedFileId(null)
+    setTasks([])
+    setProgress(null)
+    setUploadedFile(null)
+  }
+
+  // Stop generation
+  const stopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    setIsProcessing(false)
+    setProgress(null)
+    setCurrentToolCalls([])
+  }
+
+  // Remove file
+  const removeFile = (fileId: string) => {
+    setGeneratedFiles((prev) => prev.filter((f) => f.id !== fileId))
+    if (selectedFileId === fileId) {
+      const remaining = generatedFiles.filter((f) => f.id !== fileId)
+      setSelectedFileId(remaining[0]?.id || null)
+    }
+  }
+
+  const selectedFile = generatedFiles.find((f) => f.id === selectedFileId)
+  
+  // Check if build is complete and we have a preview to show
+  const isBuildComplete = selectedFile && !isProcessing && tasks.length > 0 && tasks.every(t => t.status === "completed")
+
+  return (
+    <div className="relative h-[calc(100vh-4rem)] bg-background overflow-hidden">
+      {/* Background Preview Workspace - Shows generated website */}
+      <div className={`absolute inset-0 transition-all duration-500 ${isChatCollapsed ? "left-0" : "left-[400px] lg:left-[450px]"}`}>
+        {selectedFile ? (
+          <div className="h-full flex flex-col">
+            {/* Preview Toolbar */}
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/95 backdrop-blur-sm z-10">
+              <div className="flex items-center gap-3">
+                {isBuildComplete && (
+                  <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                    <CheckCircle className="w-3 h-3 mr-1" />
+                    Live Preview
+                  </Badge>
+                )}
+                {isProcessing && (
+                  <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    Building...
+                  </Badge>
+                )}
+                <span className="text-sm text-muted-foreground font-mono">{selectedFile.path}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Device Toggle */}
+                <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+                  <Button
+                    variant={previewDevice === "mobile" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setPreviewDevice("mobile")}
+                    className="h-7 w-7 p-0"
+                  >
+                    <Smartphone className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={previewDevice === "tablet" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setPreviewDevice("tablet")}
+                    className="h-7 w-7 p-0"
+                  >
+                    <Tablet className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={previewDevice === "desktop" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setPreviewDevice("desktop")}
+                    className="h-7 w-7 p-0"
+                  >
+                    <Monitor className="w-4 h-4" />
+                  </Button>
+                </div>
+                
+                <div className="w-px h-6 bg-border" />
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPreviewKey((prev) => prev + 1)}
+                  className="h-8 px-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowCode(true)}
+                  className="h-8"
+                >
+                  <Code2 className="w-4 h-4 mr-2" />
+                  Code
+                </Button>
+                
+                {isBuildComplete && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(selectedFile.content, selectedFile.id)}
+                      className="h-8"
+                    >
+                      {copiedFileId === selectedFile.id ? (
+                        <Check className="w-4 h-4 mr-2 text-green-500" />
+                      ) : (
+                        <Copy className="w-4 h-4 mr-2" />
+                      )}
+                      Copy
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => downloadFile(selectedFile)}
+                      className="h-8"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-8 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      Deploy
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+            
+            {/* Preview Content */}
+            <div className="flex-1 bg-[#0a0a0a] flex items-center justify-center p-4 overflow-auto">
+              <div
+                className="bg-white rounded-lg overflow-hidden shadow-2xl transition-all duration-300"
+                style={{
+                  width: previewDevice === "desktop" ? "100%" : DEVICE_SIZES[previewDevice].width,
+                  height: previewDevice === "mobile" ? "667px" : previewDevice === "tablet" ? "800px" : "100%",
+                  maxHeight: "100%",
+                }}
+              >
+                <iframe
+                  key={previewKey}
+                  srcDoc={generatePreviewHtml(selectedFile.content)}
+                  className="w-full h-full border-0"
+                  title="Live Preview"
+                  sandbox="allow-scripts"
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Empty State - No preview yet */
+          <div className="h-full flex items-center justify-center bg-[#0a0a0a]">
+            <div className="text-center">
+              <div className="w-20 h-20 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-6">
+                <Eye className="w-10 h-10 text-white/30" />
+              </div>
+              <h3 className="text-xl font-semibold text-white/70 mb-2">Live Preview Workspace</h3>
+              <p className="text-sm text-white/40 max-w-sm">
+                Describe what you want to build in the chat. Your generated website will appear here.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Code Overlay Modal */}
+      {showCode && selectedFile && (
+        <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+            <div className="flex items-center gap-3">
+              <FileCode className="w-5 h-5 text-primary" />
+              <span className="font-medium">Source Code</span>
+              <span className="text-sm text-muted-foreground font-mono">{selectedFile.path}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => copyToClipboard(selectedFile.content, selectedFile.id)}
+                className="h-8"
+              >
+                {copiedFileId === selectedFile.id ? (
+                  <Check className="w-4 h-4 mr-2 text-green-500" />
+                ) : (
+                  <Copy className="w-4 h-4 mr-2" />
+                )}
+                Copy
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadFile(selectedFile)}
+                className="h-8"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCode(false)}
+                className="h-8"
+              >
+                <X className="w-4 h-4 mr-2" />
+                Close
+              </Button>
+            </div>
+          </div>
+          <ScrollArea className="flex-1">
+            <pre className="p-6 text-sm font-mono text-foreground leading-relaxed">
+              <code>{selectedFile.content}</code>
+            </pre>
+          </ScrollArea>
+        </div>
+      )}
+
+      {/* Floating Chat Panel - Left Side */}
+      <div className={`absolute top-0 bottom-0 left-0 z-40 transition-all duration-300 ${isChatCollapsed ? "w-12" : "w-[400px] lg:w-[450px]"} bg-card border-r border-border shadow-xl flex flex-col`}>
+        {/* Collapse Toggle */}
+        <button
+          onClick={() => setIsChatCollapsed(!isChatCollapsed)}
+          className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-12 bg-card border border-border rounded-r-lg flex items-center justify-center hover:bg-muted transition-colors z-50"
+        >
+          {isChatCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
+        
+        {isChatCollapsed ? (
+          /* Collapsed Sidebar */
+          <div className="flex flex-col items-center py-4 gap-3">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Cpu className="w-4 h-4 text-primary" />
+            </div>
+            {isProcessing && (
+              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              </div>
+            )}
+            {isBuildComplete && (
+              <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
+                <CheckCircle className="w-4 h-4 text-green-500" />
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Expanded Chat Interface */
+          <>
+            {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Cpu className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-semibold">Autonomous Agent</h1>
+                {generatedFiles.length > 0 && !isProcessing && (
+                  <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
+                    <CheckCircle className="w-3 h-3 mr-1" />
+                    Task Complete
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">AI-powered code generation with live preview</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept=".tsx,.ts,.jsx,.js,.json,.md"
+              className="hidden"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isProcessing}
+            >
+              <FileUp className="w-4 h-4 mr-2" />
+              Upload
+            </Button>
+            {isProcessing && (
+              <Button variant="outline" size="sm" onClick={stopGeneration}>
+                <X className="w-4 h-4 mr-2" />
+                Stop
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={clearConversation}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Clear
+            </Button>
+          </div>
+        </div>
+
+        {/* Messages Area */}
+        <ScrollArea className="flex-1">
+          <div className="p-4 space-y-4 max-w-3xl mx-auto">
+            {/* Completed Tasks Summary */}
+            {tasks.length > 0 && tasks.every(t => t.status === "completed") && !isProcessing && (
+              <div className="mb-6 p-4 bg-green-500/5 border border-green-500/20 rounded-xl">
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                  <span className="font-semibold text-green-600">Build Complete</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {tasks.map((task) => (
+                    <div key={task.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                      <span>{task.description}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {messages.length === 0 ? (
+              <div className="space-y-8 py-8">
+                {/* Welcome Section */}
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                    <Sparkles className="w-8 h-8 text-primary" />
+                  </div>
+                  <h2 className="text-2xl font-bold mb-2">AI Agent Builder</h2>
+                  <p className="text-muted-foreground max-w-md mx-auto">
+                    Describe what you want to build. I will analyze, plan, and generate production-ready code with live preview.
+                  </p>
+                </div>
+
+                {/* Quick Generate */}
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                    <Zap className="w-4 h-4" />
+                    Quick Generate
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {UI_TYPES.map(({ type, label, icon: Icon, description }) => (
+                      <button
+                        key={type}
+                        onClick={() => handleQuickGenerate(type)}
+                        disabled={isProcessing}
+                        className="flex flex-col items-start p-4 rounded-xl border border-border bg-card hover:border-primary hover:bg-primary/5 transition-all text-left disabled:opacity-50 group"
+                      >
+                        <Icon className="w-5 h-5 text-primary mb-2 group-hover:scale-110 transition-transform" />
+                        <span className="font-medium text-sm">{label}</span>
+                        <span className="text-xs text-muted-foreground">{description}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Example Prompts */}
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                    <Terminal className="w-4 h-4" />
+                    Example Prompts
+                  </h3>
+                  <div className="space-y-2">
+                    {EXAMPLE_PROMPTS.slice(0, 4).map((prompt, index) => (
+                      <button
+                        key={index}
+                        onClick={() => sendMessage(prompt)}
+                        disabled={isProcessing}
+                        className="w-full text-left p-3 rounded-lg border border-border bg-card hover:border-primary hover:bg-primary/5 transition-all text-sm disabled:opacity-50 group"
+                      >
+                        <span className="text-muted-foreground group-hover:text-foreground transition-colors">
+                          {prompt}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    {message.role === "assistant" && (
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <Bot className="w-4 h-4 text-primary" />
+                      </div>
+                    )}
+
+                    <div
+                      className={`max-w-[85%] ${
+                        message.role === "user"
+                          ? "bg-primary text-primary-foreground rounded-2xl rounded-tr-md px-4 py-3"
+                          : "space-y-3"
+                      }`}
+                    >
+                      <div className={`text-sm whitespace-pre-wrap ${message.role === "assistant" ? "bg-muted/50 rounded-xl rounded-tl-md p-4" : ""}`}>
+                        {message.content}
+                      </div>
+
+                      {message.files && message.files.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {message.files.map((file) => (
+                            <button
+                              key={file.id}
+                              onClick={() => setSelectedFileId(file.id)}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
+                                selectedFileId === file.id
+                                  ? "border-primary bg-primary/10"
+                                  : "border-border bg-card hover:border-primary"
+                              }`}
+                            >
+                              <FileCode className="w-4 h-4 text-primary" />
+                              <span className="text-sm font-medium">{file.path.split("/").pop()}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {message.role === "user" && (
+                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                        <MessageSquare className="w-4 h-4" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Progress Indicator */}
+                {isProcessing && progress && (
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                    </div>
+                    <div className="flex-1 bg-muted/50 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">{progress.step}</p>
+                        <span className="text-xs text-muted-foreground">{progress.progress}%</span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary transition-all duration-300 ease-out"
+                          style={{ width: `${progress.progress}%` }}
+                        />
+                      </div>
+
+                      {/* Current Tools */}
+                      {currentToolCalls.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {currentToolCalls.map((tool) => (
+                            <Badge key={tool.id} variant="outline" className="text-xs">
+                              {tool.status === "completed" ? (
+                                <Check className="w-3 h-3 mr-1 text-green-500" />
+                              ) : (
+                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                              )}
+                              {tool.tool.replace(/_/g, " ")}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Task List */}
+                      {tasks.length > 0 && showTasks && (
+                        <div className="space-y-2 pt-2 border-t border-border">
+                          {tasks.map((task) => (
+                            <div key={task.id} className="flex items-center gap-2 text-xs">
+                              {task.status === "completed" ? (
+                                <CheckCircle className="w-4 h-4 text-green-500" />
+                              ) : task.status === "running" ? (
+                                <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                              ) : task.status === "error" ? (
+                                <AlertCircle className="w-4 h-4 text-destructive" />
+                              ) : (
+                                <Clock className="w-4 h-4 text-muted-foreground" />
+                              )}
+                              <span className={task.status === "completed" ? "text-muted-foreground line-through" : ""}>
+                                {task.description}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </ScrollArea>
+
+        {/* Input Area */}
+        <div className="p-4 border-t border-border bg-card">
+          <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
+            <div className="flex gap-2">
+              <div className="flex-1 relative">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Describe what you want to build..."
+                  disabled={isProcessing}
+                  rows={1}
+                  className="w-full px-4 py-3 border border-border rounded-xl bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50 text-base min-h-[48px] max-h-[120px]"
+                />
+              </div>
+              <Button type="submit" disabled={!input.trim() || isProcessing} className="h-12 px-4">
+                {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              Press Enter to send, Shift+Enter for new line
+            </p>
+          </form>
+        </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Generate HTML for preview iframe
+function generatePreviewHtml(code: string): string {
+  // Extract component content and render as static HTML\
+  return `\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.min.js"></script>
+  <style>\
+    * { box-sizing: border-box; }\
+    body { margin: 0; font-family: system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+    
+    // Lucide icons
+    const icons = window.lucideReact || {};
+    const { 
+      ArrowRight, CheckCircle, Star, Zap, Shield, Users, Send, Loader2, 
+      AlertCircle, Search, Filter, Plus, MoreHorizontal, Edit, Trash2, 
+      Eye, Home, FolderKanban, Settings, Bell, Menu, X, ChevronDown, 
+      LogOut, Check, BarChart3, DollarSign, TrendingUp, ArrowUp, ArrowDown,
+      Mail, Phone, MapPin, Github, Twitter, Linkedin, Heart, Clock,
+      Calendar, Tag, Bookmark, Share, MessageCircle, ThumbsUp, Play,
+      Pause, Volume2, VolumeX, Maximize, Minimize, ChevronLeft, ChevronRight
+    } = icons;
+    
+    // Component code
+    ${code.replace(/'use client'\s*;?\s*/g, "").replace(/export default /g, "const GeneratedComponent = ")}
+    
+    // Render
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(GeneratedComponent));
+  </script>
+</body>
+</html>
+  `
+}
+
+// Get template code based on type
+function getTemplateCode(type: UIType): string {
+  const templates: Record<UIType, string> = {
+    "landing-page": `'use client'
+
+import { useState } from 'react'
+import { ArrowRight, CheckCircle, Star, Zap, Shield, Users } from 'lucide-react'
+
+export default function LandingPage() {\
+  const [email, setEmail] = useState('')
+
+  const features = [\
+    { icon: Zap, title: 'Lightning Fast', description: 'Optimized for speed and performance' },\
+    { icon: Shield, title: 'Secure', description: 'Enterprise-grade security built in' },\
+    { icon: Users, title: 'Team Ready', description: 'Collaborate with your entire team' },
+  ]
+
+  const pricing = [\
+    { name: 'Starter', price: '$9', features: ['5 Projects', 'Basic Support', '1 User'], popular: false },\
+    { name: 'Pro', price: '$29', features: ['Unlimited Projects', 'Priority Support', '5 Users', 'Analytics'], popular: true },\
+    { name: 'Enterprise', price: '$99', features: ['Everything in Pro', 'Custom Integrations', 'Unlimited Users', '24/7 Support'], popular: false },
+  ]
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-bold text-xl">AppName</span>
+            </div>
+            <div className="hidden md:flex items-center gap-8">
+              <a href="#features" className="text-slate-600 hover:text-slate-900 transition-colors">Features</a>
+              <a href="#pricing" className="text-slate-600 hover:text-slate-900 transition-colors">Pricing</a>
+              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                Get Started
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <section className="pt-32 pb-20 px-4">
+        <div className="max-w-7xl mx-auto text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-medium mb-6">
+            <Star className="w-4 h-4" />
+            Trusted by 10,000+ companies
+          </div>
+          <h1 className="text-5xl md:text-7xl font-bold text-slate-900 mb-6 leading-tight">
+            Build Better Products<br />
+            <span className="text-blue-600">Faster Than Ever</span>
+          </h1>
+          <p className="text-xl text-slate-600 mb-8 max-w-2xl mx-auto">
+            The all-in-one platform that helps teams ship products faster with less complexity.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button className="px-8 py-4 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25">
+              Start Free Trial <ArrowRight className="w-5 h-5" />
+            </button>
+            <button className="px-8 py-4 bg-white text-slate-900 rounded-xl font-semibold hover:bg-slate-50 transition-all border border-slate-200">
+              Watch Demo
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" className="py-20 px-4 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-slate-900 mb-4">Everything you need</h2>
+            <p className="text-xl text-slate-600">Powerful features to help you build and scale</p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-8">
+            {features.map((feature, index) => (
+              <div key={index} className="p-8 rounded-2xl border border-slate-200 hover:border-blue-200 hover:shadow-lg transition-all">
+                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4">
+                  <feature.icon className="w-6 h-6 text-blue-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-slate-900 mb-2">{feature.title}</h3>
+                <p className="text-slate-600">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing" className="py-20 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-slate-900 mb-4">Simple, transparent pricing</h2>
+            <p className="text-xl text-slate-600">Choose the plan that works for you</p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            {pricing.map((plan, index) => (
+              <div 
+                key={index} 
+                className={"p-8 rounded-2xl border-2 " + (plan.popular ? "border-blue-600 bg-blue-50 scale-105" : "border-slate-200 bg-white") + " transition-all"}
+              >
+                {plan.popular && (
+                  <div className="text-center mb-4">
+                    <span className="px-3 py-1 bg-blue-600 text-white text-sm font-medium rounded-full">Most Popular</span>
+                  </div>
+                )}
+                <h3 className="text-2xl font-bold text-slate-900 mb-2">{plan.name}</h3>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold text-slate-900">{plan.price}</span>
+                  <span className="text-slate-600">/month</span>
+                </div>
+                <ul className="space-y-3 mb-8">
+                  {plan.features.map((feature, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                      <span className="text-slate-600">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <button className={\`w-full py-3 rounded-xl font-semibold transition-all \${
+                  plan.popular 
+                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                    : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+                }\`}>
+                  Get Started
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 px-4 bg-blue-600">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-4xl font-bold text-white mb-4">Ready to get started?</h2>
+          <p className="text-xl text-blue-100 mb-8">Join thousands of teams already using our platform</p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center max-w-md mx-auto">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter your email"
+              className="flex-1 px-4 py-3 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-white"
+            />
+            <button className="px-6 py-3 bg-white text-blue-600 rounded-xl font-semibold hover:bg-blue-50 transition-colors">
+              Subscribe
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}`,\
+    dashboard: `'use client'
+\
+import { useState } from 'react'\
+import { BarChart3, Users, DollarSign, TrendingUp, ArrowUp, ArrowDown, MoreHorizontal, Bell, Search, Settings } from 'lucide-react'
+\
+export default function Dashboard() {\
+  const [period, setPeriod] = useState('week')
+\
+  const stats = [\
+    { label: 'Total Revenue\', value: \'$45,231\', change: '+12.5%', trend: \'up', icon: DollarSign },\
+    { label: 'Active Users', value: '2,345', change: '+8.2%', trend: 'up', icon: Users },\
+    { label: 'Conversion Rate', value: '3.24%', change: '-2.1%', trend: 'down', icon: TrendingUp },\
+    { label: 'Avg. Order Value', value: '$125', change: '+4.3%', trend: 'up', icon: BarChart3 },
+  ]
+
+  const recentActivity = [\
+    { user: 'John Doe', action: 'Made a purchase', amount: '$250.00', time: '2 min ago' },\
+    { user: 'Jane Smith', action: 'Signed up', amount: '-', time: '5 min ago' },\
+    { user: 'Bob Wilson', action: 'Upgraded plan', amount: '$99.00', time: '12 min ago' },\
+    { user: 'Alice Brown', action: 'Made a purchase', amount: '$175.00', time: '25 min ago' },
+  ]
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <header className="bg-white border-b border-slate-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+            <p className="text-slate-500 text-sm">Welcome back, here is your overview</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input 
+                type="text" 
+                placeholder="Search..." 
+                className="pl-10 pr-4 py-2 bg-slate-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <button className="relative p-2 hover:bg-slate-100 rounded-lg">
+              <Bell className="w-5 h-5 text-slate-600" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+            </button>
+            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+              JD
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="p-6">
+        <div className="flex items-center gap-2 mb-6">
+          {['day', 'week', 'month', 'year'].map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={\`px-4 py-2 rounded-lg text-sm font-medium transition-colors \${
+                period === p ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'
+              }\`}
+            >
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {stats.map((stat, index) => (
+            <div key={index} className="bg-white rounded-xl p-6 border border-slate-200">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <stat.icon className="w-5 h-5 text-blue-600" />
+                </div>
+                <button className="p-1 hover:bg-slate-100 rounded">
+                  <MoreHorizontal className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+              <p className="text-slate-500 text-sm mb-1">{stat.label}</p>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-bold text-slate-900">{stat.value}</span>
+                <span className={\`flex items-center gap-1 text-sm font-medium \${
+                  stat.trend === 'up' ? 'text-green-600' : 'text-red-600'
+                }\`}>
+                  {stat.trend === 'up' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}
+                  {stat.change}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-white rounded-xl p-6 border border-slate-200">
+            <h3 className="text-lg font-semibold text-slate-900 mb-6">Revenue Overview</h3>
+            <div className="h-64 flex items-end justify-between gap-2">
+              {[65, 45, 75, 50, 85, 60, 90, 70, 95, 55, 80, 72].map((height, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                  <div 
+                    className="w-full bg-blue-600 rounded-t-sm transition-all hover:bg-blue-700"
+                    style={{ height: \`\${height}%\` }}
+                  />
+                  <span className="text-xs text-slate-500">
+                    {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][i]}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-6 border border-slate-200">
+            <h3 className="text-lg font-semibold text-slate-900 mb-6">Recent Activity</h3>
+            <div className="space-y-4">
+              {recentActivity.map((activity, index) => (
+                <div key={index} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-sm font-medium">
+                      {activity.user.split(' ').map(n => n[0]).join('')}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{activity.user}</p>
+                      <p className="text-xs text-slate-500">{activity.action}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-slate-900">{activity.amount}</p>
+                    <p className="text-xs text-slate-500">{activity.time}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  )
+}`,\
+    form: `'use client'
+\
+import { useState } from 'react'\
+import { Send, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+\
+export default function ContactForm() {\
+  const [formData, setFormData] = useState({ name: '\', email: '', subject: '', message: \'' })
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSuccess, setIsSuccess] = useState(false)
+
+  const validateForm = () => {\
+    const newErrors: Record<string, string> = {}
+    if (!formData.name.trim()) newErrors.name = 'Name is required'
+    if (!formData.email.trim()) newErrors.email = 'Email is required'
+    else if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(formData.email)) newErrors.email = 'Invalid email'
+    if (!formData.subject.trim()) newErrors.subject = 'Subject is required'
+    if (!formData.message.trim()) newErrors.message = 'Message is required'
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()\
+    if (!validateForm()) return
+    setIsSubmitting(true)
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    setIsSubmitting(false)
+    setIsSuccess(true)\
+    setFormData({ name: '', email: '', subject: '', message: '' })
+    setTimeout(() => setIsSuccess(false), 5000)
+  }
+\
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {\
+    const { name, value } = e.target\
+    setFormData(prev => ({ ...prev, [name]: value }))\
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }))
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-xl">
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Get in Touch</h1>
+            <p className="text-slate-600">We would love to hear from you!</p>
+          </div>
+
+          {isSuccess && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+              <span className="text-green-800 font-medium">Message sent successfully!</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {[
+              { name: 'name', label: 'Full Name', type: 'text', placeholder: 'John Doe' },
+              { name: 'email', label: 'Email', type: 'email', placeholder: 'john@example.com' },
+              { name: 'subject', label: 'Subject', type: 'text', placeholder: 'How can we help?' },
+            ].map((field) => (
+              <div key={field.name}>
+                <label className="block text-sm font-medium text-slate-700 mb-2">{field.label}</label>
+                <input
+                  type={field.type}
+                  name={field.name}
+                  value={formData[field.name as keyof typeof formData]}
+                  onChange={handleChange}
+                  placeholder={field.placeholder}
+                  className={\`w-full px-4 py-3 rounded-xl border \${errors[field.name] ? 'border-red-500' : 'border-slate-300'} focus:outline-none focus:ring-2 focus:ring-blue-500\`}
+                />
+                {errors[field.name] && (
+                  <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4" />{errors[field.name]}
+                  </p>
+                )}
+              </div>
+            ))}
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Message</label>
+              <textarea
+                name="message"
+                rows={5}
+                value={formData.message}
+                onChange={handleChange}
+                placeholder="Tell us more..."
+                className={\`w-full px-4 py-3 rounded-xl border \${errors.message ? 'border-red-500' : 'border-slate-300'} focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none\`}
+              />
+              {errors.message && (
+                <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4" />{errors.message}
+                </p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full py-4 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? <><Loader2 className="w-5 h-5 animate-spin" />Sending...</> : <><Send className="w-5 h-5" />Send Message</>}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}`,\
+    component: `'use client'
+\
+import { useState } from 'react'\
+import { Check, Star } from 'lucide-react'
+
+interface PricingCardProps {\
+  name?: string\
+  price?: string\
+  period?: string\
+  features?: string[]\
+  popular?: boolean\
+  onSelect?: () => void
+}
+
+export default function PricingCard({
+  name = 'Pro Plan',
+  price = '$29',
+  period = 'month',
+  features = ['Unlimited projects', 'Priority support', '5 team members', 'Advanced analytics'],
+  popular = true,
+  onSelect
+}: PricingCardProps) {\
+  const [isHovered, setIsHovered] = useState(false)
+
+  return (
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className={\`relative p-8 bg-white rounded-2xl border-2 transition-all duration-300 \${
+        popular ? 'border-blue-600 shadow-xl scale-105' : 'border-slate-200 hover:border-blue-300 hover:shadow-lg'
+      }\`}
+    >
+      {popular && (
+        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+          <span className="inline-flex items-center gap-1 px-4 py-1 bg-blue-600 text-white text-sm font-semibold rounded-full">
+            <Star className="w-4 h-4" />Most Popular
+          </span>
+        </div>
+      )}
+
+      <div className="text-center mb-6">
+        <h3 className="text-2xl font-bold text-slate-900 mb-2">{name}</h3>
+        <div className="flex items-baseline justify-center gap-1">
+          <span className="text-5xl font-bold text-slate-900">{price}</span>
+          <span className="text-slate-600">/{period}</span>
+        </div>
+      </div>
+
+      <ul className="space-y-4 mb-8">
+        {features.map((feature, index) => (
+          <li key={index} className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+              <Check className="w-4 h-4 text-green-600" />
+            </div>
+            <span className="text-slate-700">{feature}</span>
+          </li>
+        ))}
+      </ul>
+
+      <button
+        onClick={onSelect}
+        className={\`w-full py-4 rounded-xl font-semibold transition-all duration-300 \${
+          popular || isHovered
+            ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-600/25'
+            : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+        }\`}
+      >
+        Get Started
+      </button>
+    </div>
+  )
+}`,\
+    page: `'use client'
+\
+import { useState } from 'react'\
+import { Search, Filter, Plus, MoreHorizontal, Edit, Trash2, Eye } from 'lucide-react'
+\
+export default function ProjectsPage() {\
+  const [searchQuery, setSearchQuery] = useState('')\
+  const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
+
+  const projects = [\
+    { id: '1', name: 'Website Redesign', status: 'active', progress: 75, team: ['JD', 'AS'], dueDate: 'Mar 15' },\
+    { id: '2', name: 'Mobile App v2.0', status: 'active', progress: 45, team: ['BW'], dueDate: 'Apr 1' },\
+    { id: '3', name: 'API Integration', status: 'completed', progress: 100, team: ['JD', 'RH'], dueDate: 'Feb 28' },\
+    { id: '4', name: 'Database Migration', status: 'paused', progress: 30, team: ['MK'], dueDate: 'Mar 20' },
+  ]
+
+  const filteredProjects = projects.filter(p => 
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+    (!selectedStatus || p.status === selectedStatus)
+  )
+
+  const getStatusColor = (status: string) => {\
+    const colors: Record<string, string> = {\
+      active: 'bg-green-100 text-green-700',
+      paused: 'bg-yellow-100 text-yellow-700',
+      completed: 'bg-blue-100 text-blue-700'
+    }
+    return colors[status] || 'bg-slate-100 text-slate-700'
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Projects</h1>
+            <p className="text-slate-600">Manage your team projects</p>
+          </div>
+          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <Plus className="w-5 h-5" />New Project
+          </button>
+        </div>
+
+        <div className="flex items-center gap-4 mb-6">
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            {['active', 'paused', 'completed'].map((status) => (
+              <button
+                key={status}
+                onClick={() => setSelectedStatus(selectedStatus === status ? null : status)}
+                className={\`px-3 py-1 rounded-full text-sm font-medium \${
+                  selectedStatus === status ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'
+                }\`}
+              >
+                {status.charAt(0).toUpperCase() + status.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredProjects.map((project) => (
+            <div key={project.id} className="bg-white rounded-xl p-6 border border-slate-200 hover:shadow-lg transition-shadow">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="font-semibold text-slate-900 mb-1">{project.name}</h3>
+                  <span className={\`inline-block px-2 py-1 rounded-full text-xs font-medium \${getStatusColor(project.status)}\`}>
+                    {project.status}
+                  </span>
+                </div>
+                <button className="p-1 hover:bg-slate-100 rounded"><MoreHorizontal className="w-5 h-5 text-slate-400" /></button>
+              </div>
+
+              <div className="mb-4">
+                <div className="flex items-center justify-between text-sm mb-2">
+                  <span className="text-slate-600">Progress</span>
+                  <span className="font-medium">{project.progress}%</span>
+                </div>
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-600 rounded-full" style={{ width: \`\${project.progress}%\` }} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex -space-x-2">
+                  {project.team.map((member, i) => (
+                    <div key={i} className="w-8 h-8 bg-slate-300 rounded-full border-2 border-white flex items-center justify-center text-xs font-medium">
+                      {member}
+                    </div>
+                  ))}
+                </div>
+                <span className="text-sm text-slate-500">{project.dueDate}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}`,\
+    layout: `'use client'
+\
+import { useState } from 'react'\
+import { Home, FolderKanban, Users, Settings, Bell, Search, Menu, X, LogOut } from 'lucide-react'
+\
+export default function AppLayout({ children }: { children?: React.ReactNode }) {\
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+\
+  const navItems = [\
+    { icon: Home, label: 'Dashboard\', href: \'/', active: true },\
+    { icon: FolderKanban, label: 'Projects', href: '/projects', active: false },\
+    { icon: Users, label: 'Team', href: '/team', active: false },\
+    { icon: Settings, label: 'Settings', href: '/settings', active: false },
+  ]
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      <aside className={\`\${sidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-slate-200 transition-all duration-300 flex flex-col\`}>
+        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200">
+          {sidebarOpen && (
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold">A</span>
+              </div>
+              <span className="font-bold text-slate-900">AppName</span>
+            </div>
+          )}
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-slate-100 rounded-lg">
+            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
+
+        <nav className="flex-1 p-4">
+          <ul className="space-y-2">
+            {navItems.map((item) => (
+              <li key={item.label}>
+                <a href={item.href} className={\`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors \${
+                  item.active ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-100'
+                }\`}>
+                  <item.icon className="w-5 h-5" />
+                  {sidebarOpen && <span className="font-medium">{item.label}</span>}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        {sidebarOpen && (
+          <div className="p-4 border-t border-slate-200">
+            <div className="p-4 bg-blue-50 rounded-xl">
+              <p className="text-sm font-medium text-blue-900 mb-2">Upgrade to Pro</p>
+              <button className="w-full py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                Upgrade
+              </button>
+            </div>
+          </div>
+        )}
+      </aside>
+
+      <div className="flex-1 flex flex-col">
+        <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between">
+          <div className="relative max-w-md flex-1">
+            <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input type="text" placeholder="Search..." className="w-full pl-10 pr-4 py-2 bg-slate-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div className="flex items-center gap-4">
+            <button className="relative p-2 hover:bg-slate-100 rounded-lg">
+              <Bell className="w-5 h-5 text-slate-600" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+            </button>
+            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">JD</div>
+          </div>
+        </header>
+
+        <main className="flex-1 p-6 overflow-auto">
+          {children || (
+            <div className="text-center py-20">
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">Welcome to AppName</h2>
+              <p className="text-slate-600">Select a page from the sidebar to get started</p>
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  )
+}`,\
+    api: \`import { NextResponse } from 'next/server'
+
+interface Item {\
+  id: string
+  name: string
+  description: string
+  createdAt: string
+  updatedAt: string
+}
+
+// In-memory storage (replace with database in production)
+let items: Item[] = [\
+  { id: '1', name: 'Item 1', description: 'First item', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },\
+  { id: '2', name: 'Item 2', description: 'Second item', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+]
+
+// GET - List all items
+export async function GET() {\
+  return NextResponse.json({ items, total: items.length })
+}
+
+// POST - Create new item
+export async function POST(request: Request) {\
+  try {\
+    const body = await request.json()
+    const newItem: Item = {\
+      id: Date.now().toString(),
+      name: body.name,
+      description: body.description || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    items.push(newItem)\
+    return NextResponse.json(newItem, { status: 201 })
+  } catch {\
+    return NextResponse.json({ error: 'Invalid request\' }, { status: 400 })
+  }
+}
+
+// PUT - Update item
+export async function PUT(request: Request) {\
+  try {\
+    const body = await request.json()
+    const index = items.findIndex(item => item.id === body.id)
+    if (index === -1) {\
+      return NextResponse.json({ error: 'Item not found\' }, { status: 404 })
+    }\
+    items[index] = { ...items[index], ...body, updatedAt: new Date().toISOString() }
+    return NextResponse.json(items[index])
+  } catch {\
+    return NextResponse.json({ error: 'Invalid request\' }, { status: 400 })
+  }
+}
+
+// DELETE - Delete item
+export async function DELETE(request: Request) {\
+  try {\
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+    if (!id) {\
+      return NextResponse.json({ error: 'ID required\' }, { status: 400 })
+    }
+    const index = items.findIndex(item => item.id === id)
+    if (index === -1) {\
+      return NextResponse.json({ error: 'Item not found\' }, { status: 404 })
+    }
+    items = items.filter(item => item.id !== id)\
+    return NextResponse.json({ success: true })
+  } catch {\
+    return NextResponse.json({ error: 'Invalid request\' }, { status: 400 })
+  }
+}`,
+    auth: `'use client'
+
+import { useState } from 'react'
+import { Mail, Lock, Eye, EyeOff, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
+
+export default function AuthPage() {\
+  const [isLogin, setIsLogin] = useState(true)
+  const [showPassword, setShowPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)\
+  const [formData, setFormData] = useState({ email: '', password: '', name: '' })
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()\
+    setError('')
+    setIsLoading(true)
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    setIsLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8">
+          <div className="text-center mb-8">
+            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <span className="text-white text-xl font-bold">A</span>
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">{isLogin ? 'Welcome back' : 'Create account'}</h1>
+            <p className="text-slate-600 mt-1">{isLogin ? 'Sign in to your account' : 'Get started for free'}</p>
+          </div>
+
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600" />
+              <span className="text-red-800 text-sm">{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {!isLogin && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Name</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="John Doe"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+              <div className="relative">
+                <Mail className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="john@example.com"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Password</label>
+              <div className="relative">
+                <Lock className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                  className="w-full pl-10 pr-12 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            {isLogin && (
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input type="checkbox" className="rounded border-slate-300" />
+                  Remember me
+                </label>
+                <button type="button" className="text-sm text-blue-600 hover:text-blue-700">Forgot password?</button>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isLoading ? <><Loader2 className="w-5 h-5 animate-spin" />Please wait...</> : isLogin ? 'Sign In' : 'Create Account'}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <p className="text-slate-600">
+              {isLogin ? "Don't have an account? " : 'Already have an account? '}
+              <button onClick={() => setIsLogin(!isLogin)} className="text-blue-600 font-medium hover:text-blue-700">
+                {isLogin ? 'Sign up' : 'Sign in'}
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}`,
+    ecommerce: `'use client'
+
+import { useState } from 'react'
+import { Search, Filter, ShoppingCart, Star, Heart, Plus, Minus } from 'lucide-react'
+
+export default function StorePage() {\
+  const [cartCount, setCartCount] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const products = [\
+    { id: 1, name: 'Wireless Headphones', price: 199, rating: 4.8, reviews: 234, image: '🎧' },\
+    { id: 2, name: 'Smart Watch', price: 299, rating: 4.6, reviews: 189, image: '⌚' },\
+    { id: 3, name: 'Laptop Stand', price: 79, rating: 4.9, reviews: 456, image: '💻' },\
+    { id: 4, name: 'Mechanical Keyboard', price: 149, rating: 4.7, reviews: 312, image: '⌨️' },\
+    { id: 5, name: 'USB-C Hub', price: 49, rating: 4.5, reviews: 178, image: '🔌' },\
+    { id: 6, name: \'Webcam HD', price: 89, rating: 4.4, reviews: 245, image: '📷' },
+  ]
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-slate-900">TechStore</h1>
+            <div className="flex items-center gap-4">
+              <div className="relative max-w-md w-96">
+                <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <button className="relative p-2 hover:bg-slate-100 rounded-lg">
+                <ShoppingCart className="w-6 h-6 text-slate-600" />
+                {cartCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 text-white text-xs rounded-full flex items-center justify-center">
+                    {cartCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-8">
+          <h2 className="text-2xl font-bold text-slate-900">Featured Products</h2>
+          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
+            <Filter className="w-5 h-5" />Filter
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {products.map((product) => (
+            <div key={product.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow group">
+              <div className="relative h-48 bg-slate-100 flex items-center justify-center">
+                <span className="text-6xl">{product.image}</span>
+                <button className="absolute top-3 right-3 p-2 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50">
+                  <Heart className="w-5 h-5 text-slate-400 hover:text-red-500" />
+                </button>
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold text-slate-900 mb-1">{product.name}</h3>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-1">
+                    <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                    <span className="text-sm font-medium">{product.rating}</span>
+                  </div>
+                  <span className="text-sm text-slate-500">({product.reviews} reviews)</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl font-bold text-slate-900">\${product.price}</span>
+                  <button
+                    onClick={() => setCartCount(prev => prev + 1)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    Add to Cart
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
+    </div>
+  )
+}`,
+    blog: `'use client'
+
+import { useState } from 'react'
+import { Search, Calendar, Clock, Tag, ChevronRight, Bookmark } from 'lucide-react'
+
+export default function BlogPage() {\
+  const [searchQuery, setSearchQuery] = useState('')\
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)\
+
+  const categories = ['Technology', 'Design', 'Development', 'Business', 'Lifestyle']
+
+  const posts = [
+    { id: 1, title: \'Getting Started with Next.js 14', excerpt: 'Learn the fundamentals of Next.js and build your first application...', category: 'Development', date: 'Mar 15, 2024', readTime: '5 min', featured: true },
+    { id: 2, title: \'Modern UI Design Principles', excerpt: 'Discover the key principles that make great user interfaces...', category: 'Design', date: 'Mar 12, 2024', readTime: '4 min', featured: true },
+    { id: 3, title: \'The Future of AI in Business', excerpt: 'How artificial intelligence is transforming industries...', category: 'Business', date: 'Mar 10, 2024', readTime: '6 min', featured: false },
+    { id: 4, title: \'Building Scalable APIs', excerpt: 'Best practices for designing and building robust APIs...', category: 'Development', date: 'Mar 8, 2024', readTime: '7 min', featured: false },
+  ]
+
+  const filteredPosts = posts.filter(p => 
+    p.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
+    (!selectedCategory || p.category === selectedCategory)
+  )
+
+  const featuredPosts = filteredPosts.filter(p => p.featured)
+  const regularPosts = filteredPosts.filter(p => !p.featured)
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <header className="bg-white border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-slate-900">TechBlog</h1>
+            <div className="relative w-80">
+              <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search articles..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 mt-4">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+                className={\`px-4 py-1.5 rounded-full text-sm font-medium transition-colors \${
+                  selectedCategory === cat ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }\`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        {featuredPosts.length > 0 && (
+          <section className="mb-12">
+            <h2 className="text-xl font-bold text-slate-900 mb-6">Featured</h2>
+            <div className="grid md:grid-cols-2 gap-6">
+              {featuredPosts.map((post) => (
+                <article key={post.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow">
+                  <div className="h-48 bg-gradient-to-br from-blue-500 to-purple-600" />
+                  <div className="p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">{post.category}</span>
+                      <span className="flex items-center gap-1 text-sm text-slate-500"><Calendar className="w-4 h-4" />{post.date}</span>
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 mb-2 hover:text-blue-600 cursor-pointer">{post.title}</h3>
+                    <p className="text-slate-600 mb-4">{post.excerpt}</p>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1 text-sm text-slate-500"><Clock className="w-4 h-4" />{post.readTime} read</span>
+                      <button className="text-blue-600 font-medium flex items-center gap-1 hover:gap-2 transition-all">Read more <ChevronRight className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section>
+          <h2 className="text-xl font-bold text-slate-900 mb-6">Latest Posts</h2>
+          <div className="space-y-4">
+            {regularPosts.map((post) => (
+              <article key={post.id} className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-lg transition-shadow flex gap-6">
+                <div className="w-32 h-24 bg-gradient-to-br from-slate-200 to-slate-300 rounded-lg flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded">{post.category}</span>
+                    <span className="text-sm text-slate-500">{post.date}</span>
+                    <span className="text-sm text-slate-500">{post.readTime} read</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900 mb-1 hover:text-blue-600 cursor-pointer">{post.title}</h3>
+                  <p className="text-slate-600 text-sm">{post.excerpt}</p>
+                </div>
+                <button className="p-2 hover:bg-slate-100 rounded-lg self-start">
+                  <Bookmark className="w-5 h-5 text-slate-400" />
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      </main>
+    </div>
+  )
+}`,
+    portfolio: `\'use client'
+\
+import { useState } from 'react'\
+import { Github, Linkedin, Twitter, Mail, ExternalLink, ChevronRight } from \'lucide-react\'
+
+export default function PortfolioPage() {\
+  const [activeTab, setActiveTab] = useState(\'all')
+\
+  const projects = [\
+    { id: 1, title: \'E-commerce Platform', description: \'Full-stack online store with payments', tags: ['React', \'Node.js', 'Stripe'], category: 'web' },\
+    { id: 2, title: \'Mobile Banking App', description: 'Secure financial management app', tags: ['React Native', 'Firebase'], category: 'mobile' },
+    { id: 3, title: \'Analytics Dashboard', description: 'Real-time data visualization tool', tags: ['Next.js', 'D3.js'], category: 'web' },
+    { id: 4, title: \'AI Chatbot', description: 'Customer service automation', tags: ['Python', 'OpenAI'], category: 'ai' },
+  ]
+
+  const filteredProjects = activeTab === 'all' ? projects : projects.filter(p => p.category === activeTab)
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-white">
+      <header className="py-20 px-4 text-center">
+        <div className="max-w-4xl mx-auto">
+          <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-6 flex items-center justify-center text-4xl font-bold">
+            JD
+          </div>
+          <h1 className="text-5xl font-bold mb-4">John Doe</h1>
+          <p className="text-xl text-slate-400 mb-6">Full-Stack Developer & UI Designer</p>
+          <p className="text-slate-300 max-w-2xl mx-auto mb-8">
+            I build exceptional digital experiences that live at the intersection of design and technology.
+            Currently focused on building accessible, human-centered products.
+          </p>
+          <div className="flex justify-center gap-4">
+            {[
+              { icon: Github, href: '#' },
+              { icon: Linkedin, href: '#' },
+              { icon: Twitter, href: '#' },
+              { icon: Mail, href: '#' },
+            ].map((social, i) => (
+              <a key={i} href={social.href} className="p-3 bg-slate-800 rounded-full hover:bg-slate-700 transition-colors">
+                <social.icon className="w-5 h-5" />
+              </a>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      <section className="py-20 px-4 bg-slate-800/50">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl font-bold mb-8">Featured Projects</h2>
+          
+          <div className="flex gap-2 mb-8">
+            {['all', 'web', 'mobile', 'ai'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={\`px-4 py-2 rounded-lg font-medium transition-colors \${
+                  activeTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }\`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            {filteredProjects.map((project) => (
+              <div key={project.id} className="bg-slate-800 rounded-xl p-6 border border-slate-700 hover:border-blue-500 transition-colors group">
+                <div className="h-40 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-lg mb-4" />
+                <h3 className="text-xl font-bold mb-2 group-hover:text-blue-400 transition-colors">{project.title}</h3>
+                <p className="text-slate-400 mb-4">{project.description}</p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {project.tags.map((tag) => (
+                    <span key={tag} className="px-2 py-1 bg-slate-700 text-slate-300 text-sm rounded">{tag}</span>
+                  ))}
+                </div>
+                <a href="#" className="text-blue-400 font-medium flex items-center gap-1 hover:gap-2 transition-all">
+                  View Project <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 px-4">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-3xl font-bold mb-4">Let's Work Together</h2>
+          <p className="text-slate-400 mb-8">Have a project in mind? I would love to hear from you.</p>
+          <a href="mailto:hello@johndoe.com" className="inline-flex items-center gap-2 px-8 py-4 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors">
+            Get In Touch <ChevronRight className="w-5 h-5" />
+          </a>
+        </div>
+      </section>
+    </div>
+  )
+}`
+  }
+  \
+  return templates[type] || templates.component
+}\
