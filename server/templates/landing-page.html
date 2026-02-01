@@ -1,330 +1,532 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
   <head>
     <title>APP_NAME_PLACEHOLDER</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#3b82f6" />
     <style>
+      :root {
+        --primary: #3b82f6;
+        --primary-dark: #2563eb;
+        --primary-light: #60a5fa;
+        --secondary: #8b5cf6;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --dark: #0f172a;
+        --gray-900: #1e293b;
+        --gray-800: #334155;
+        --gray-700: #475569;
+        --gray-600: #64748b;
+        --gray-500: #94a3b8;
+        --gray-400: #cbd5e1;
+        --gray-300: #e2e8f0;
+        --gray-200: #f1f5f9;
+        --gray-100: #f8fafc;
+        --white: #ffffff;
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      }
+
       * {
         box-sizing: border-box;
+        margin: 0;
+        padding: 0;
       }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes slideIn {
+        from { opacity: 0; transform: translateX(-20px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+
+      @keyframes scaleIn {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+
+      @keyframes shimmer {
+        0% { background-position: -1000px 0; }
+        100% { background-position: 1000px 0; }
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+      }
+
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        margin: 0;
-        padding: 32px 20px;
-        text-align: center;
-        background: #fff;
-        color: #222;
-        line-height: 1.5;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Display", sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: var(--dark);
+        line-height: 1.6;
         min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 20px;
       }
+
       .wrapper {
-        max-width: 480px;
+        max-width: 800px;
         margin: 0 auto;
+        text-align: center;
+        animation: fadeIn 0.6s ease-out;
       }
-      h1 {
-        font-size: 26px;
-        font-weight: 600;
-        margin: 0;
-        color: #111;
-      }
-      .subtitle {
-        font-size: 15px;
-        color: #666;
-        margin-top: 8px;
-        margin-bottom: 32px;
-      }
+
       .loading {
         display: none;
         margin: 60px 0;
       }
+
       .spinner {
-        border: 2px solid #ddd;
-        border-top-color: #333;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-top-color: var(--white);
         border-radius: 50%;
-        width: 32px;
-        height: 32px;
+        width: 40px;
+        height: 40px;
         animation: spin 0.8s linear infinite;
         margin: 20px auto;
       }
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
+
       .loading-text {
         font-size: 16px;
-        color: #444;
+        color: var(--white);
+        font-weight: 500;
       }
+
       .content {
         display: block;
+      }
+
+      .logo {
+        font-size: 2.5rem;
+        font-weight: 800;
+        color: var(--white);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.5px;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+      }
+
+      .logo-icon {
+        font-size: 2.75rem;
+        filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+        animation: float 3s ease-in-out infinite;
+      }
+
+      .subtitle {
+        font-size: 1.125rem;
+        color: rgba(255, 255, 255, 0.85);
+        margin-bottom: 2.5rem;
+        font-weight: 400;
       }
 
       .steps-container {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 1.5rem;
       }
 
       .step {
-        padding: 24px;
-        border: 1px solid #ddd;
-        border-radius: 12px;
+        background: var(--white);
+        border-radius: 1.25rem;
+        padding: 2rem;
         text-align: center;
-        background: #fafafa;
+        box-shadow: var(--shadow-xl);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+        animation: slideIn 0.5s ease-out backwards;
+        border: 1px solid var(--gray-200);
       }
+
+      .step:nth-child(1) { animation-delay: 0.1s; }
+      .step:nth-child(2) { animation-delay: 0.2s; }
+
+      .step::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, var(--primary), var(--secondary), var(--primary));
+        background-size: 200% 100%;
+        animation: shimmer 3s linear infinite;
+      }
+
+      .step:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow-2xl);
+      }
+
       .step-header {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 10px;
-        margin-bottom: 12px;
+        gap: 12px;
+        margin-bottom: 1rem;
       }
+
       .step-number {
-        width: 28px;
-        height: 28px;
-        border: 1px solid #999;
+        width: 36px;
+        height: 36px;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-weight: 600;
-        font-size: 14px;
+        font-weight: 700;
+        font-size: 1rem;
+        color: var(--white);
+        box-shadow: var(--shadow-md);
         flex-shrink: 0;
-        color: #555;
       }
+
       .step-title {
-        font-size: 18px;
-        font-weight: 600;
+        font-size: 1.375rem;
+        font-weight: 700;
         margin: 0;
-        color: #222;
+        color: var(--gray-900);
       }
+
       .step-description {
-        font-size: 14px;
-        margin-bottom: 16px;
-        color: #666;
+        font-size: 0.95rem;
+        margin-bottom: 1.5rem;
+        color: var(--gray-600);
+        line-height: 1.5;
       }
 
       .store-buttons {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 0.75rem;
         justify-content: center;
-        flex-wrap: wrap;
       }
+
       .store-button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
-        padding: 12px 20px;
-        font-size: 14px;
-        font-weight: 500;
-        border: 1px solid #ccc;
-        border-radius: 8px;
+        gap: 10px;
+        padding: 0.875rem 1.5rem;
+        font-size: 0.95rem;
+        font-weight: 600;
+        border: 2px solid var(--gray-300);
+        border-radius: 0.75rem;
         text-decoration: none;
-        color: #333;
-        background: #fff;
-        transition: all 0.15s;
+        color: var(--gray-800);
+        background: var(--white);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
       }
+
+      .store-button::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.1), transparent);
+        transition: left 0.5s;
+      }
+
+      .store-button:hover::before {
+        left: 100%;
+      }
+
       .store-button:hover {
-        background: #f5f5f5;
-        border-color: #999;
+        border-color: var(--primary);
+        color: var(--primary);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
       }
+
       .store-link {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: 6px;
-        padding: 8px 0;
-        font-size: 13px;
-        font-weight: 400;
+        padding: 10px 0;
+        font-size: 0.875rem;
+        font-weight: 500;
         text-decoration: underline;
-        text-underline-offset: 2px;
-        color: #666;
+        text-underline-offset: 3px;
+        color: var(--gray-500);
         background: none;
         border: none;
-        transition: color 0.15s;
+        transition: color 0.2s;
       }
+
       .store-link:hover {
-        color: #333;
+        color: var(--primary);
       }
+
       .store-link .store-icon {
-        width: 14px;
-        height: 14px;
+        width: 16px;
+        height: 16px;
       }
+
       .store-icon {
-        width: 18px;
-        height: 18px;
+        width: 20px;
+        height: 20px;
       }
 
       .qr-section {
-        background: #333;
-        color: #fff;
-        border-color: #333;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: var(--white);
+        border: none;
       }
+
+      .qr-section::before {
+        background: linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,0.4), rgba(255,255,255,0.2));
+      }
+
       .qr-section .step-number {
-        border-color: rgba(255, 255, 255, 0.5);
-        color: #fff;
+        background: rgba(255, 255, 255, 0.25);
+        color: var(--white);
+        border: 2px solid rgba(255, 255, 255, 0.4);
       }
+
       .qr-section .step-title {
-        color: #fff;
+        color: var(--white);
       }
+
       .qr-section .step-description {
-        color: rgba(255, 255, 255, 0.7);
+        color: rgba(255, 255, 255, 0.85);
       }
+
       .qr-code {
-        width: 180px;
-        height: 180px;
-        margin: 0 auto 16px;
-        background: #fff;
-        border-radius: 8px;
-        padding: 12px;
+        width: 200px;
+        height: 200px;
+        margin: 0 auto 1.25rem;
+        background: var(--white);
+        border-radius: 1rem;
+        padding: 16px;
+        box-shadow: var(--shadow-lg);
+        transition: transform 0.3s ease;
       }
+
+      .qr-code:hover {
+        transform: scale(1.02);
+      }
+
       .qr-code canvas {
         width: 100%;
         height: 100%;
       }
+
       .open-button {
-        display: inline-block;
-        padding: 12px 24px;
-        font-size: 14px;
-        font-weight: 500;
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 0.875rem 2rem;
+        font-size: 0.95rem;
+        font-weight: 600;
+        border: none;
+        border-radius: 0.75rem;
         text-decoration: none;
-        color: #333;
-        background: #fff;
-        transition: opacity 0.15s;
-      }
-      .open-button:hover {
-        opacity: 0.9;
+        color: var(--primary);
+        background: var(--white);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: var(--shadow-md);
       }
 
-      /* Desktop styles */
+      .open-button:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.375rem 0.875rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.25), rgba(255,255,255,0.15));
+        color: var(--white);
+        margin-top: 1rem;
+        backdrop-filter: blur(4px);
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4ade80;
+        box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.3);
+        animation: pulse 2s ease-in-out infinite;
+      }
+
       @media (min-width: 768px) {
         body {
           padding: 48px 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
         }
-        .wrapper {
-          max-width: 720px;
+
+        .logo {
+          font-size: 2.75rem;
         }
-        h1 {
-          font-size: 32px;
-          margin-bottom: 10px;
-        }
+
         .subtitle {
-          font-size: 16px;
-          margin-bottom: 40px;
+          font-size: 1.25rem;
+          margin-bottom: 3rem;
         }
+
         .steps-container {
           flex-direction: row;
-          gap: 20px;
+          gap: 1.5rem;
           align-items: stretch;
         }
+
         .step {
           flex: 1;
           display: flex;
           flex-direction: column;
-          padding: 28px;
+          padding: 2.5rem;
         }
+
         .step-description {
           flex-grow: 1;
         }
+
         .store-buttons {
           flex-direction: column;
-          gap: 10px;
+          gap: 0.75rem;
         }
+
         .qr-code {
-          width: 200px;
-          height: 200px;
+          width: 220px;
+          height: 220px;
         }
       }
 
-      /* Large desktop */
       @media (min-width: 1024px) {
         .wrapper {
-          max-width: 800px;
+          max-width: 900px;
         }
-        h1 {
-          font-size: 36px;
+
+        .logo {
+          font-size: 3rem;
         }
+
         .steps-container {
-          gap: 28px;
+          gap: 2rem;
         }
+
         .step {
-          padding: 32px;
+          padding: 2.5rem;
         }
       }
 
-      /* Dark mode */
       @media (prefers-color-scheme: dark) {
+        :root {
+          --gray-100: #1e293b;
+          --gray-200: #334155;
+          --gray-300: #475569;
+          --gray-400: #64748b;
+          --gray-600: #94a3b8;
+          --gray-800: #e2e8f0;
+          --gray-900: #f8fafc;
+        }
+
         body {
-          background: #0d0d0d;
-          color: #e0e0e0;
+          background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
         }
-        h1 {
-          color: #f5f5f5;
-        }
-        .subtitle {
-          color: #999;
-        }
-        .spinner {
-          border-color: #444;
-          border-top-color: #ccc;
-        }
-        .loading-text {
-          color: #aaa;
-        }
+
         .step {
-          border-color: #333;
-          background: #1a1a1a;
+          background: #1e293b;
+          border-color: #334155;
         }
-        .step-number {
-          border-color: #666;
-          color: #bbb;
-        }
+
         .step-title {
-          color: #f0f0f0;
+          color: #f8fafc;
         }
+
         .step-description {
-          color: #888;
+          color: #94a3b8;
         }
+
         .store-button {
-          border-color: #444;
-          color: #e0e0e0;
-          background: #222;
+          border-color: #475569;
+          color: #e2e8f0;
+          background: #1e293b;
         }
+
         .store-button:hover {
-          background: #2a2a2a;
-          border-color: #666;
+          background: #334155;
+          border-color: var(--primary);
+          color: var(--primary-light);
         }
+
         .store-link {
-          color: #888;
+          color: #94a3b8;
         }
+
         .store-link:hover {
-          color: #ccc;
+          color: var(--primary-light);
         }
-        .qr-section {
-          background: #111;
-          border-color: #333;
+
+        .qr-code {
+          background: #f8fafc;
         }
-        .qr-section .step-number {
-          border-color: rgba(255, 255, 255, 0.4);
-        }
-        .qr-section .step-description {
-          color: rgba(255, 255, 255, 0.6);
-        }
+
         .open-button {
-          background: #f0f0f0;
-          color: #111;
+          background: #f8fafc;
+          color: var(--primary-dark);
         }
-        .open-button:hover {
-          background: #e0e0e0;
-        }
+      }
+
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: var(--gray-200);
+        border-radius: 8px;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        border-radius: 8px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, var(--primary-dark), var(--secondary));
+      }
+
+      .skeleton {
+        background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-300) 50%, var(--gray-200) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 2s infinite;
+        border-radius: 0.5rem;
       }
     </style>
   </head>
@@ -336,8 +538,10 @@
       </div>
 
       <div class="content" id="content">
-        <h1>APP_NAME_PLACEHOLDER</h1>
-        <p class="subtitle">Preview this app on your phone</p>
+        <div class="logo">
+          <span class="logo-icon">APP_NAME_PLACEHOLDER</span>
+        </div>
+        <p class="subtitle">Preview this app on your mobile device</p>
 
         <div class="steps-container">
           <div class="step">
@@ -346,7 +550,7 @@
               <h2 class="step-title">Download Expo Go</h2>
             </div>
             <p class="step-description">
-              Expo Go is a free app to test mobile apps
+              Expo Go is a free app that lets you test mobile apps instantly on your device
             </p>
             <div class="store-buttons" id="store-buttons">
               <a
@@ -383,11 +587,15 @@
               <div class="step-number">2</div>
               <h2 class="step-title">Scan QR Code</h2>
             </div>
-            <p class="step-description">Use your phone's camera or Expo Go</p>
+            <p class="step-description">Use your phone's camera or the Expo Go app to scan</p>
             <div class="qr-code" id="qr-code"></div>
-            <a href="exps://EXPS_URL_PLACEHOLDER" class="open-button"
-              >Open in Expo Go</a
-            >
+            <a href="exps://EXPS_URL_PLACEHOLDER" class="open-button">
+              Open in Expo Go
+            </a>
+            <div class="badge">
+              <span class="status-dot"></span>
+              Ready to connect
+            </div>
           </div>
         </div>
       </div>
@@ -407,7 +615,6 @@
 
         const deepLink = "exps://EXPS_URL_PLACEHOLDER";
 
-        // Adjust store buttons based on platform
         const appStoreBtn = document.getElementById("app-store-btn");
         const playStoreBtn = document.getElementById("play-store-btn");
         const storeButtonsContainer = document.getElementById("store-buttons");
@@ -426,7 +633,7 @@
           data: deepLink,
           image: "assets/images/icon.png",
           dotsOptions: {
-            color: "#333333",
+            color: "#3b82f6",
             type: "rounded",
           },
           backgroundOptions: {
@@ -434,14 +641,16 @@
           },
           imageOptions: {
             crossOrigin: "anonymous",
-            margin: 6,
+            margin: 8,
             imageSize: 0.35,
           },
           cornersSquareOptions: {
             type: "extra-rounded",
+            color: "#8b5cf6",
           },
           cornersDotOptions: {
             type: "dot",
+            color: "#3b82f6",
           },
           qrOptions: {
             errorCorrectionLevel: "H",
