@@ -88,6 +88,51 @@ The system prompt configures an elite autonomous development agent with professi
 - Task steps with running/complete status
 - Animated thinking indicators and progress bars
 
+### Autonomous Agent System (New)
+
+A production-grade autonomous AI agent system located in `server/agent/`:
+
+**Tool Registry** (`server/agent/tools.ts`):
+- `read_file` - Read files from workspace
+- `write_file` - Write/create files in workspace
+- `list_files` - List directory contents (recursive option)
+- `fetch_url` - HTTP requests to external URLs
+
+**Persistent Memory** (`server/agent/memory.ts`):
+- JSON-based storage in `agent_memory.json`
+- Tracks completed tasks, decisions, and results
+- Memory injected into planning and execution prompts
+- Goal tracking with status (in_progress, completed, failed)
+
+**Self-Reflection** (in `server/agent/engine.ts`):
+- Post-task reflection evaluates success/failure
+- Confidence scoring (0-100%)
+- Retry recommendations based on analysis
+- Adjustments suggested for failed tasks
+
+**Autonomous Boot Mode**:
+- Resume unfinished goals on startup
+- Toggle between manual goal entry and autonomous continuous mode
+- Load previous memory context automatically
+
+**Execution Safeguards**:
+- Maximum steps limit (default: 50)
+- Maximum retries per task (default: 3)
+- Graceful failure handling
+- Clear state reporting throughout execution
+
+**Agent API Endpoints**:
+- `POST /api/agent` - Run agent with goal
+- `GET /api/agent/stream/:id` - SSE stream for real-time updates
+- `GET /api/agent/status/:id` - Get agent status
+- `GET /api/agent/memory` - View all memory
+- `GET /api/agent/memory/stats` - Memory statistics
+- `DELETE /api/agent/memory` - Clear memory
+- `GET /api/agent/tools` - List available tools
+- `GET /api/agent/unfinished` - Get unfinished goals
+- `POST /api/agent/resume` - Resume unfinished goals
+- `GET /api/agent/dashboard` - Modern dashboard UI
+
 ### Replit Integrations
 
 Pre-built integration modules in `server/replit_integrations/`:
