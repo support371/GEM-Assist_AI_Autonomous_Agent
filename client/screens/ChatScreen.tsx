@@ -47,20 +47,54 @@ function extractCodeBlocks(content: string): CodeBlock[] {
   return blocks;
 }
 
+function extractEmbeddedHtml(code: string): string | null {
+  const patterns = [
+    /res\.send\s*\(\s*`([\s\S]*?)`\s*\)/,
+    /res\.send\s*\(\s*['"](<[\s\S]*?>)['\"]\s*\)/,
+    /innerHTML\s*=\s*`([\s\S]*?)`/,
+    /\.html\s*\(\s*`([\s\S]*?)`\s*\)/,
+    /document\.write\s*\(\s*`([\s\S]*?)`\s*\)/,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = code.match(pattern);
+    if (match && match[1]) {
+      const html = match[1].trim();
+      if (html.includes('<!DOCTYPE html>') || html.includes('<html') || 
+          (html.includes('<head') && html.includes('<body'))) {
+        return html;
+      }
+    }
+  }
+  return null;
+}
+
 function extractHtmlPreview(blocks: CodeBlock[]): { html: string; css?: string; js?: string } | null {
   const htmlBlock = blocks.find(b => b.language.toLowerCase() === "html");
-  if (!htmlBlock) return null;
+  if (htmlBlock) {
+    const cssBlock = blocks.find(b => b.language.toLowerCase() === "css");
+    const jsBlock = blocks.find(b => 
+      b.language.toLowerCase() === "javascript" || b.language.toLowerCase() === "js"
+    );
+    return {
+      html: htmlBlock.code,
+      css: cssBlock?.code,
+      js: jsBlock?.code,
+    };
+  }
 
-  const cssBlock = blocks.find(b => b.language.toLowerCase() === "css");
-  const jsBlock = blocks.find(b => 
-    b.language.toLowerCase() === "javascript" || b.language.toLowerCase() === "js"
+  const tsJsBlocks = blocks.filter(b => 
+    ["typescript", "ts", "javascript", "js"].includes(b.language.toLowerCase())
   );
+  
+  for (const block of tsJsBlocks) {
+    const embeddedHtml = extractEmbeddedHtml(block.code);
+    if (embeddedHtml) {
+      return { html: embeddedHtml };
+    }
+  }
 
-  return {
-    html: htmlBlock.code,
-    css: cssBlock?.code,
-    js: jsBlock?.code,
-  };
+  return null;
 }
 
 export default function ChatScreen() {

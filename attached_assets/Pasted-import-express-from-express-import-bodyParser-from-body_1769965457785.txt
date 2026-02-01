@@ -1,0 +1,177 @@
+import express from "express";
+import bodyParser from "body-parser";
+import fetch from "node-fetch";
+
+const app = express();
+app.use(bodyParser.json());
+
+/* =========================
+   TYPES
+========================= */
+
+type Task = {
+  id: number;
+  description: string;
+  status: "pending" | "running" | "done";
+  result?: string;
+};
+
+type AgentState = {
+  goal: string;
+  tasks: Task[];
+  currentTask: number;
+  log: string[];
+};
+
+/* =========================
+   LLM CALL
+========================= */
+
+async function callLLM(prompt: string): Promise<string> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+    }),
+  });
+
+  const data = await res.json();
+  return data.choices[0].message.content;
+}
+
+/* =========================
+   PLANNER
+========================= */
+
+async function planTasks(goal: string): Promise<Task[]> {
+  const plan = await callLLM(
+    `You are an autonomous planner.
+Break the following goal into clear, ordered tasks.
+Return ONLY a numbered list.
+
+Goal:
+${goal}`
+  );
+
+  return plan
+    .split("\n")
+    .filter((l) => l.match(/^\d+/))
+    .map((line, i) => ({
+      id: i + 1,
+      description: line.replace(/^\d+[\).\s]*/, ""),
+      status: "pending",
+    }));
+}
+
+/* =========================
+   TASK EXECUTOR
+========================= */
+
+async function executeTask(task: Task): Promise<string> {
+  return await callLLM(
+    `You are an execution agent.
+Complete the task below as best as possible.
+
+Task:
+${task.description}
+
+Respond with the result only.`
+  );
+}
+
+/* =========================
+   AGENT ENGINE
+========================= */
+
+async function runAgent(goal: string): Promise<AgentState> {
+  const state: AgentState = {
+    goal,
+    tasks: await planTasks(goal),
+    currentTask: 0,
+    log: [],
+  };
+
+  for (let i = 0; i < state.tasks.length; i++) {
+    const task = state.tasks[i];
+    state.currentTask = i + 1;
+    task.status = "running";
+
+    state.log.push(`▶️ Task ${task.id}: ${task.description}`);
+
+    const result = await executeTask(task);
+
+    task.status = "done";
+    task.result = result;
+
+    state.log.push(`✅ Result: ${result}`);
+  }
+
+  state.log.push("🏁 All tasks completed.");
+  return state;
+}
+
+/* =========================
+   API
+========================= */
+
+app.post("/agent", async (req, res) => {
+  const { goal } = req.body;
+  if (!goal) return res.status(400).json({ error: "Goal required" });
+
+  const result = await runAgent(goal);
+  res.json(result);
+});
+
+/* =========================
+   UI (MINIMAL, FUNCTIONAL)
+========================= */
+
+app.get("/", (_, res) => {
+  res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Autonomous Agent</title>
+  <style>
+    body { background:#0f172a; color:white; font-family:sans-serif; }
+    textarea { width:100%; height:120px; }
+    button { margin-top:10px; padding:10px; }
+    pre { background:#020617; padding:20px; margin-top:20px; }
+  </style>
+</head>
+<body>
+  <h2>Autonomous Multi-Task Agent</h2>
+  <textarea id="goal" placeholder="Enter a goal..."></textarea>
+  <button onclick="run()">Run</button>
+  <pre id="out"></pre>
+
+  <script>
+    async function run() {
+      out.textContent = "Running...";
+      const res = await fetch("/agent", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ goal: goal.value })
+      });
+      const data = await res.json();
+      out.textContent = data.log.join("\\n");
+    }
+  </script>
+</body>
+</html>
+`);
+});
+
+/* =========================
+   START
+========================= */
+
+app.listen(3000, () =>
+  console.log("🚀 Agent running at http://localhost:3000")
+);
