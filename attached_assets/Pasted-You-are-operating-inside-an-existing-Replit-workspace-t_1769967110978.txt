@@ -1,0 +1,75 @@
+You are operating inside an existing Replit workspace that already contains a working autonomous agent core (multi-step planner + executor).
+
+Your task is to FINALIZE this project into a production-grade autonomous AI system by implementing ALL of the following, without breaking existing functionality.
+
+GOALS (DO ALL):
+
+1. TOOLS
+- Implement a tool registry the agent can use autonomously.
+- Include at minimum:
+  - read_file
+  - write_file
+  - list_files
+  - fetch_url
+- Tools must be callable by the agent via structured actions.
+- Tools must log inputs and outputs.
+
+2. MEMORY (PERSISTENT)
+- Add persistent memory that survives restarts.
+- Use a simple local store (JSON or lightweight file-based DB).
+- Memory must record:
+  - completed tasks
+  - decisions
+  - results
+- Memory must be injected into planning and execution prompts.
+
+3. SELF-REFLECTION
+- After each task execution, run a reflection step.
+- Reflection must answer:
+  - Was the task completed successfully?
+  - What should be improved?
+  - Should the agent retry, adjust, or proceed?
+- Reflection must influence the next action.
+
+4. AUTONOMOUS BOOT
+- Add an autonomous mode that can start without user input.
+- On startup:
+  - Load previous memory
+  - Resume unfinished goals if any
+- UI should allow switching between:
+  - Manual goal entry
+  - Autonomous continuous mode
+
+5. BOOST (RELIABILITY & CONTROL)
+- Add execution safeguards:
+  - Max steps per run
+  - Graceful failure handling
+  - Clear agent state reporting
+- Ensure the agent never enters infinite loops.
+
+6. UI MATCH + LIVE PREVIEW
+- Improve the UI to resemble a modern agent dashboard:
+  - Chat / task log
+  - Agent status (Planning / Executing / Reflecting)
+  - Current task highlight
+- IMPORTANT:
+  - Enable Replit LIVE PREVIEW
+  - Ensure the preview updates so the user can watch the agent run in real time
+  - The workspace must clearly show the development process and output
+
+CONSTRAINTS:
+- Do NOT rewrite the entire project.
+- Extend the existing agent core.
+- Keep the system understandable and modular.
+- Prefer clarity and reliability over extra features.
+
+DELIVERABLE:
+- A fully working autonomous AI agent with:
+  - tools
+  - memory
+  - self-reflection
+  - autonomous mode
+  - live preview UI
+- The project must run cleanly in Replit and be viewable via Live Preview.
+
+Proceed step by step, implementing, testing, and enabling Live Preview.
