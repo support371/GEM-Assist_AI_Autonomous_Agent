@@ -14,12 +14,15 @@ import { EmptyState } from "@/components/EmptyState";
 import { LoadingDots } from "@/components/LoadingDots";
 import { AgentStatus } from "@/components/AgentStatus";
 import { CodePreview } from "@/components/CodePreview";
+import { WebPreview } from "@/components/WebPreview";
 import { QuickPrompts } from "@/components/QuickPrompts";
+import { TaskExecutor } from "@/components/TaskExecutor";
+import { ProjectFiles } from "@/components/ProjectFiles";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { getApiUrl } from "@/lib/query-client";
-import type { Message, StreamEvent, CodeBlock } from "@/types/chat";
+import type { Message, StreamEvent, CodeBlock, AgentTask } from "@/types/chat";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, "Chat">;
@@ -34,11 +37,30 @@ function extractCodeBlocks(content: string): CodeBlock[] {
     const language = match[1] || "code";
     const code = match[2].trim();
     if (code.length > 0) {
-      blocks.push({ language, code });
+      const filenameMatch = code.match(/^\/\/\s*filename:\s*(.+)/);
+      const filename = filenameMatch ? filenameMatch[1].trim() : undefined;
+      const cleanCode = filenameMatch ? code.replace(/^\/\/\s*filename:\s*.+\n?/, "") : code;
+      blocks.push({ language, code: cleanCode.trim(), filename });
     }
   }
 
   return blocks;
+}
+
+function extractHtmlPreview(blocks: CodeBlock[]): { html: string; css?: string; js?: string } | null {
+  const htmlBlock = blocks.find(b => b.language.toLowerCase() === "html");
+  if (!htmlBlock) return null;
+
+  const cssBlock = blocks.find(b => b.language.toLowerCase() === "css");
+  const jsBlock = blocks.find(b => 
+    b.language.toLowerCase() === "javascript" || b.language.toLowerCase() === "js"
+  );
+
+  return {
+    html: htmlBlock.code,
+    css: cssBlock?.code,
+    js: jsBlock?.code,
+  };
 }
 
 export default function ChatScreen() {
@@ -57,8 +79,12 @@ export default function ChatScreen() {
   const [streamingContent, setStreamingContent] = useState("");
   const [agentStatus, setAgentStatus] = useState<StreamEvent["status"]>();
   const [agentStep, setAgentStep] = useState<string>();
+  const [tasks, setTasks] = useState<AgentTask[]>([]);
+  const [currentTaskId, setCurrentTaskId] = useState<string>();
   const [showCodePreview, setShowCodePreview] = useState(false);
+  const [showWebPreview, setShowWebPreview] = useState(false);
   const [codeBlocks, setCodeBlocks] = useState<CodeBlock[]>([]);
+  const [selectedFileIndex, setSelectedFileIndex] = useState(0);
 
   useEffect(() => {
     fetchConversation();
@@ -67,22 +93,33 @@ export default function ChatScreen() {
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        codeBlocks.length > 0 ? (
-          <Pressable
-            onPress={() => {
-              if (Platform.OS !== "web") {
-                Haptics.selectionAsync();
-              }
-              setShowCodePreview(true);
-            }}
-            style={styles.headerButton}
-          >
-            <Feather name="code" size={20} color={theme.link} />
-          </Pressable>
-        ) : null
+        <View style={styles.headerActions}>
+          {extractHtmlPreview(codeBlocks) ? (
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.selectionAsync();
+                setShowWebPreview(true);
+              }}
+              style={styles.headerButton}
+            >
+              <Feather name="eye" size={20} color={theme.success} />
+            </Pressable>
+          ) : null}
+          {codeBlocks.length > 0 ? (
+            <Pressable
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.selectionAsync();
+                setShowCodePreview(true);
+              }}
+              style={styles.headerButton}
+            >
+              <Feather name="code" size={20} color={theme.link} />
+            </Pressable>
+          ) : null}
+        </View>
       ),
     });
-  }, [codeBlocks, theme.link]);
+  }, [codeBlocks, theme]);
 
   const fetchConversation = async () => {
     try {
@@ -120,6 +157,8 @@ export default function ChatScreen() {
     setStreamingContent("");
     setAgentStatus(undefined);
     setAgentStep(undefined);
+    setTasks([]);
+    setCurrentTaskId(undefined);
 
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -133,9 +172,7 @@ export default function ChatScreen() {
         body: JSON.stringify({ content }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to send message");
-      }
+      if (!response.ok) throw new Error("Failed to send message");
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No reader available");
@@ -153,22 +190,25 @@ export default function ChatScreen() {
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             try {
-              const event: StreamEvent = JSON.parse(line.slice(6));
+              const event: StreamEvent & { tasks?: AgentTask[]; currentTaskId?: string } = JSON.parse(line.slice(6));
               
+              if (event.tasks) {
+                setTasks(event.tasks);
+              }
+              if (event.currentTaskId) {
+                setCurrentTaskId(event.currentTaskId);
+              }
               if (event.status && event.status !== "complete") {
                 setAgentStatus(event.status);
                 setAgentStep(event.step);
               }
-              
               if (event.content) {
                 fullContent += event.content;
                 setStreamingContent(fullContent);
               }
-              
               if (event.titleUpdate) {
                 navigation.setOptions({ headerTitle: event.titleUpdate });
               }
-              
               if (event.done) {
                 const assistantMessage: Message = {
                   id: Date.now() + 1,
@@ -189,8 +229,7 @@ export default function ChatScreen() {
                   }
                 }
               }
-            } catch (e) {
-            }
+            } catch (e) {}
           }
         }
       }
@@ -201,14 +240,13 @@ export default function ChatScreen() {
       setTimeout(() => {
         setAgentStatus(undefined);
         setAgentStep(undefined);
+        setTasks([]);
       }, 2000);
     }
   }, [conversationId, navigation]);
 
   const renderMessage = useCallback(
-    ({ item }: { item: Message }) => (
-      <MessageBubble message={item} />
-    ),
+    ({ item }: { item: Message }) => <MessageBubble message={item} />,
     []
   );
 
@@ -234,15 +272,8 @@ export default function ChatScreen() {
 
     return (
       <View style={[styles.thinkingContainer, { paddingHorizontal: Spacing.lg }]}>
-        <View
-          style={[
-            styles.thinkingBubble,
-            { backgroundColor: theme.backgroundSecondary },
-          ]}
-        >
-          <View
-            style={[styles.thinkingAvatar, { backgroundColor: theme.link }]}
-          >
+        <View style={[styles.thinkingBubble, { backgroundColor: theme.backgroundSecondary }]}>
+          <View style={[styles.thinkingAvatar, { backgroundColor: theme.link }]}>
             <Feather name="cpu" size={14} color="#FFFFFF" />
           </View>
           <LoadingDots />
@@ -262,6 +293,8 @@ export default function ChatScreen() {
     );
   };
 
+  const htmlPreview = extractHtmlPreview(codeBlocks);
+
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
@@ -271,6 +304,9 @@ export default function ChatScreen() {
       {agentStatus && agentStatus !== "complete" ? (
         <View style={{ paddingTop: headerHeight + Spacing.sm }}>
           <AgentStatus status={agentStatus} step={agentStep} />
+          {tasks.length > 0 ? (
+            <TaskExecutor tasks={tasks} currentTaskId={currentTaskId} />
+          ) : null}
         </View>
       ) : null}
 
@@ -282,8 +318,8 @@ export default function ChatScreen() {
         contentContainerStyle={[
           styles.listContent,
           {
-            paddingTop: agentStatus && agentStatus !== "complete" 
-              ? Spacing.lg 
+            paddingTop: agentStatus && agentStatus !== "complete"
+              ? Spacing.lg
               : headerHeight + Spacing.lg,
             paddingBottom: Spacing.lg,
           },
@@ -302,7 +338,7 @@ export default function ChatScreen() {
         }}
         showsVerticalScrollIndicator={false}
       />
-      
+
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatInput
           onSend={handleSend}
@@ -328,10 +364,41 @@ export default function ChatScreen() {
               <Feather name="x" size={24} color={theme.text} />
             </Pressable>
           </View>
+          <View style={{ paddingHorizontal: Spacing.lg }}>
+            <ProjectFiles
+              files={codeBlocks}
+              onFileSelect={setSelectedFileIndex}
+              selectedIndex={selectedFileIndex}
+            />
+          </View>
           <CodePreview
-            codeBlocks={codeBlocks}
+            codeBlocks={codeBlocks.length > 0 ? [codeBlocks[selectedFileIndex]] : []}
             onClose={() => setShowCodePreview(false)}
           />
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showWebPreview}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowWebPreview(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}>
+          <View style={[styles.modalHeader, { paddingTop: insets.top + Spacing.md }]}>
+            <ThemedText type="h4">Live Preview</ThemedText>
+            <Pressable onPress={() => setShowWebPreview(false)}>
+              <Feather name="x" size={24} color={theme.text} />
+            </Pressable>
+          </View>
+          {htmlPreview ? (
+            <WebPreview
+              html={htmlPreview.html}
+              css={htmlPreview.css}
+              js={htmlPreview.js}
+              onClose={() => setShowWebPreview(false)}
+            />
+          ) : null}
         </View>
       </Modal>
     </KeyboardAvoidingView>
@@ -367,6 +434,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: Spacing.sm,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: Spacing.xs,
   },
   headerButton: {
     padding: Spacing.sm,

@@ -20,6 +20,8 @@ export interface StreamEvent {
   titleUpdate?: string;
   status?: "analyzing" | "planning" | "researching" | "generating" | "complete";
   step?: string;
+  tasks?: AgentTask[];
+  currentTaskId?: string;
 }
 
 export interface CodeBlock {
@@ -33,4 +35,12 @@ export interface AgentTask {
   name: string;
   status: "pending" | "running" | "complete";
   description?: string;
+}
+
+export interface ProjectFile {
+  name: string;
+  path: string;
+  language: string;
+  content: string;
+  lineCount: number;
 }

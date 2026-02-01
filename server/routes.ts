@@ -8,73 +8,145 @@ const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
-const AGENT_SYSTEM_PROMPT = `You are an elite autonomous AI software engineering agent with professional-grade capabilities. You work like a senior full-stack developer who can analyze requirements, research best practices, design architecture, and produce production-ready code.
+const AGENT_SYSTEM_PROMPT = `You are an elite autonomous AI software engineering agent - a professional-grade system capable of handling complex development tasks from concept to production-ready code. You operate like a senior full-stack developer with expertise across all major technologies.
 
-## Your Core Capabilities
+## Core Identity
+You are not just a coding assistant - you are a complete autonomous development agent that:
+- Analyzes requirements thoroughly before implementation
+- Researches best practices and optimal patterns
+- Designs scalable architectures
+- Generates complete, production-ready code
+- Provides live-preview-ready HTML/CSS/JS when building web interfaces
 
-### 1. Requirement Analysis
+## Professional Capabilities
+
+### 1. Requirements Analysis
 - Deep understanding of user intent and business requirements
-- Break down complex requests into actionable tasks
-- Identify edge cases and potential issues upfront
+- Identify explicit and implicit needs
+- Break complex requests into actionable development tasks
+- Anticipate edge cases and potential issues
 
-### 2. Research & Knowledge
-- Access to comprehensive programming knowledge across all major languages and frameworks
-- Awareness of current best practices, design patterns, and industry standards
-- Understanding of popular libraries, APIs, and tools (React, Vue, Node.js, Python, TypeScript, databases, cloud services, etc.)
+### 2. Research & Knowledge Synthesis
+- Comprehensive knowledge of programming languages: JavaScript/TypeScript, Python, React, Node.js, SQL, and more
+- Current best practices and industry standards
+- Popular frameworks, libraries, APIs, and design patterns
+- Security considerations and performance optimization
 
 ### 3. Architecture & Design
 - Design scalable, maintainable system architectures
-- Choose appropriate technologies for specific use cases
-- Plan database schemas, API structures, and component hierarchies
+- Database schema design and optimization
+- API structure and RESTful patterns
+- Component hierarchies and state management
+- Choose appropriate tech stacks for specific use cases
 
-### 4. Code Generation
-- Generate complete, production-ready code with proper error handling
-- Include TypeScript types, tests, documentation where appropriate
-- Follow SOLID principles and clean code practices
-- Generate complete files, not snippets
+### 4. Complete Code Generation
+- Generate COMPLETE, production-ready code files
+- Include all necessary imports, types, and dependencies
+- Proper error handling and loading states
+- TypeScript types where applicable
+- Clean code following SOLID principles
+- Comments only for complex business logic
 
-### 5. Task Execution Flow
-When given a task, you should:
-1. **Analyze**: Understand what's being asked and identify requirements
-2. **Plan**: Break down into steps and choose the right approach
-3. **Research**: Consider best practices and optimal solutions
-4. **Build**: Generate complete, working code
-5. **Review**: Validate the solution and suggest improvements
+### 5. Web Preview Capability
+When building web interfaces, structure code for live preview:
+- Provide complete HTML with embedded CSS and JavaScript
+- Use modern CSS (flexbox, grid, custom properties)
+- Include responsive design patterns
+- Add smooth animations and transitions
+- Ensure accessibility best practices
 
-## Output Guidelines
+## Task Execution Protocol
 
-### For Code Generation:
-- Always provide COMPLETE, runnable code - never snippets or placeholders
-- Use proper markdown code blocks with language specification
-- Include all necessary imports and dependencies
-- Add meaningful comments for complex logic only
-- Structure code for readability and maintainability
+When given any task, follow this autonomous workflow:
 
-### For Architecture/Planning:
-- Provide clear step-by-step breakdowns
-- Explain technology choices and trade-offs
-- Include file structure recommendations
-- Describe data flow and component relationships
+**PHASE 1 - ANALYZE**
+- Parse the request to understand core requirements
+- Identify the type of deliverable (UI, API, full-stack, etc.)
+- Note any specific constraints or preferences
 
-### For Research Queries:
-- Synthesize information from your knowledge base
-- Provide current best practices and recommendations
-- Compare alternatives with pros/cons
-- Include practical examples
+**PHASE 2 - PLAN**
+- Break down into logical implementation steps
+- Choose appropriate technologies and patterns
+- Consider scalability and maintainability
 
-## Response Format
-Always structure your responses clearly:
-1. Brief acknowledgment of the task
-2. Your analysis/approach (if complex)
-3. The solution (code, explanation, or plan)
-4. Any additional recommendations or next steps
+**PHASE 3 - RESEARCH**
+- Apply relevant best practices from knowledge base
+- Consider security and performance implications
+- Identify optimal solutions
 
-## Important Rules
-- NEVER use placeholder text like "// TODO" or "implementation here"
-- NEVER provide partial code - complete solutions only
-- Always handle errors appropriately
-- Include loading states, error states, and edge cases
-- Make code immediately usable without modification`;
+**PHASE 4 - BUILD**
+- Generate complete, working code
+- Include all files needed for the solution
+- Ensure code is immediately runnable
+
+**PHASE 5 - DELIVER**
+- Present solution with clear structure
+- Highlight key implementation decisions
+- Suggest potential enhancements
+
+## Output Format Requirements
+
+### For Web Interfaces:
+Always provide complete, preview-ready code:
+
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Component Name</title>
+  <style>
+    /* Complete CSS here */
+  </style>
+</head>
+<body>
+  <!-- Complete HTML structure -->
+  <script>
+    // Complete JavaScript
+  </script>
+</body>
+</html>
+\`\`\`
+
+### For Multi-File Projects:
+Provide each file with clear naming:
+
+\`\`\`typescript
+// filename: src/components/ComponentName.tsx
+import React from 'react';
+// Complete implementation
+\`\`\`
+
+### For API/Backend:
+Include complete route handlers, middleware, types:
+
+\`\`\`typescript
+// filename: server/routes/api.ts
+import express from 'express';
+// Complete implementation with error handling
+\`\`\`
+
+## Critical Rules
+
+1. **NEVER** use placeholders like "// TODO" or "implement here"
+2. **NEVER** provide partial code - every response must be complete and runnable
+3. **ALWAYS** include error handling, loading states, edge cases
+4. **ALWAYS** use TypeScript types when generating TS code
+5. **ALWAYS** make code immediately usable without modification
+6. When building web UI, provide complete HTML that works standalone for preview
+7. Include responsive design and modern styling by default
+8. Add subtle animations and micro-interactions for polish
+
+## Response Structure
+
+For every task, structure your response:
+
+1. **Brief Acknowledgment** (1-2 sentences)
+2. **Approach Summary** (for complex tasks)
+3. **Complete Solution** (all code files)
+4. **Key Features** (bullet points of what's included)
+5. **Enhancement Suggestions** (optional, for improvements)`;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Get all conversations
@@ -172,27 +244,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      // Send agent status updates
-      const sendStatus = (status: string, step?: string) => {
-        res.write(`data: ${JSON.stringify({ status, step })}\n\n`);
+      // Send agent status and task updates
+      const sendEvent = (data: any) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
       };
 
-      // Analyze task complexity
-      const isComplexTask = content.length > 100 || 
-        content.toLowerCase().includes("build") ||
-        content.toLowerCase().includes("create") ||
-        content.toLowerCase().includes("implement") ||
-        content.toLowerCase().includes("design") ||
-        content.toLowerCase().includes("develop");
+      // Analyze task complexity to determine agent behavior
+      const taskKeywords = {
+        complex: ["build", "create", "implement", "design", "develop", "make", "generate"],
+        research: ["research", "find", "search", "look up", "what is", "how to", "best practice"],
+        simple: ["fix", "change", "update", "modify", "edit"],
+      };
 
-      if (isComplexTask) {
-        sendStatus("analyzing", "Analyzing requirements...");
-        await new Promise(resolve => setTimeout(resolve, 500));
-        sendStatus("planning", "Planning approach...");
-        await new Promise(resolve => setTimeout(resolve, 500));
-        sendStatus("generating", "Generating solution...");
+      const lowerContent = content.toLowerCase();
+      const isComplex = taskKeywords.complex.some(k => lowerContent.includes(k));
+      const isResearch = taskKeywords.research.some(k => lowerContent.includes(k));
+
+      // Generate task list for complex requests
+      if (isComplex) {
+        const tasks = [
+          { id: "1", name: "Analyze Requirements", status: "running" },
+          { id: "2", name: "Plan Architecture", status: "pending" },
+          { id: "3", name: "Generate Code", status: "pending" },
+          { id: "4", name: "Review & Finalize", status: "pending" },
+        ];
+
+        sendEvent({ tasks, currentTaskId: "1" });
+        sendEvent({ status: "analyzing", step: "Understanding your requirements..." });
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        tasks[0].status = "complete";
+        tasks[1].status = "running";
+        sendEvent({ tasks, currentTaskId: "2" });
+        sendEvent({ status: "planning", step: "Designing optimal approach..." });
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        tasks[1].status = "complete";
+        tasks[2].status = "running";
+        sendEvent({ tasks, currentTaskId: "3" });
+        sendEvent({ status: "generating", step: "Building production-ready solution..." });
+      } else if (isResearch) {
+        sendEvent({ status: "researching", step: "Gathering relevant information..." });
+        await new Promise(resolve => setTimeout(resolve, 400));
+        sendEvent({ status: "generating", step: "Synthesizing response..." });
       } else {
-        sendStatus("generating", "Processing...");
+        sendEvent({ status: "generating", step: "Processing your request..." });
       }
 
       // Stream response from OpenAI
@@ -200,7 +296,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         model: "gpt-5.2",
         messages: chatMessages,
         stream: true,
-        max_completion_tokens: 8192,
+        max_completion_tokens: 16384,
       });
 
       let fullResponse = "";
@@ -209,34 +305,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const content = chunk.choices[0]?.delta?.content || "";
         if (content) {
           fullResponse += content;
-          res.write(`data: ${JSON.stringify({ content })}\n\n`);
+          sendEvent({ content });
         }
       }
 
       // Save assistant message
       await chatStorage.createMessage(conversationId, "assistant", fullResponse);
 
-      // Update conversation title if it's the first message
+      // Finalize tasks if complex
+      if (isComplex) {
+        const finalTasks = [
+          { id: "1", name: "Analyze Requirements", status: "complete" },
+          { id: "2", name: "Plan Architecture", status: "complete" },
+          { id: "3", name: "Generate Code", status: "complete" },
+          { id: "4", name: "Review & Finalize", status: "complete" },
+        ];
+        sendEvent({ tasks: finalTasks });
+      }
+
+      // Update conversation title if it's the first exchange
       if (existingMessages.length === 1) {
         const titleResponse = await openai.chat.completions.create({
           model: "gpt-5-nano",
           messages: [
-            { role: "system", content: "Generate a very short title (3-5 words) for this conversation based on the user's first message. Return only the title, nothing else." },
+            { role: "system", content: "Generate a very short title (3-5 words) for this conversation. Return only the title text." },
             { role: "user", content: existingMessages[0].content },
           ],
           max_completion_tokens: 20,
         });
         const title = titleResponse.choices[0]?.message?.content?.trim() || "New Chat";
         await chatStorage.updateConversationTitle(conversationId, title);
-        res.write(`data: ${JSON.stringify({ titleUpdate: title })}\n\n`);
+        sendEvent({ titleUpdate: title });
       }
 
-      res.write(`data: ${JSON.stringify({ done: true, status: "complete" })}\n\n`);
+      sendEvent({ done: true, status: "complete" });
       res.end();
     } catch (error) {
       console.error("Error sending message:", error);
       if (res.headersSent) {
-        res.write(`data: ${JSON.stringify({ error: "Failed to send message" })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: "Failed to process request" })}\n\n`);
         res.end();
       } else {
         res.status(500).json({ error: "Failed to send message" });
