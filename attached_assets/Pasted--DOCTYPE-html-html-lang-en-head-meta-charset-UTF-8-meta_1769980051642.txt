@@ -1,0 +1,1477 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Builder - Portfolio Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+```
+    :root {
+        --primary: #3b82f6;
+        --primary-dark: #2563eb;
+        --primary-light: #60a5fa;
+        --secondary: #8b5cf6;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --dark: #0f172a;
+        --gray-900: #1e293b;
+        --gray-800: #334155;
+        --gray-700: #475569;
+        --gray-600: #64748b;
+        --gray-500: #94a3b8;
+        --gray-400: #cbd5e1;
+        --gray-300: #e2e8f0;
+        --gray-200: #f1f5f9;
+        --gray-100: #f8fafc;
+        --white: #ffffff;
+        
+        /* Shadows */
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateX(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+
+    @keyframes scaleIn {
+        from {
+            opacity: 0;
+            transform: scale(0.95);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.7;
+        }
+    }
+
+    @keyframes shimmer {
+        0% {
+            background-position: -1000px 0;
+        }
+        100% {
+            background-position: 1000px 0;
+        }
+    }
+
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro Display', sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: var(--dark);
+        line-height: 1.6;
+        min-height: 100vh;
+    }
+
+    .app-container {
+        background: var(--gray-100);
+        min-height: 100vh;
+    }
+
+    .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+
+    /* Header */
+    header {
+        background: var(--white);
+        border-bottom: 1px solid var(--gray-200);
+        padding: 1rem 0;
+        margin-bottom: 2rem;
+        box-shadow: var(--shadow-sm);
+        backdrop-filter: blur(10px);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+    }
+
+    header .container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 2rem;
+    }
+
+    .logo {
+        font-size: 1.75rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        letter-spacing: -0.5px;
+    }
+
+    .logo-icon {
+        font-size: 2rem;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    }
+
+    /* Buttons */
+    .btn {
+        padding: 0.875rem 1.75rem;
+        border-radius: 0.75rem;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        font-size: 0.95rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .btn::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+        transition: left 0.5s;
+    }
+
+    .btn:hover::before {
+        left: 100%;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        color: white;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(59, 130, 246, 0.4);
+    }
+
+    .btn-secondary {
+        background: linear-gradient(135deg, var(--secondary), #7c3aed);
+        color: white;
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+    }
+
+    .btn-success {
+        background: linear-gradient(135deg, var(--success), #059669);
+        color: white;
+    }
+
+    .btn-danger {
+        background: linear-gradient(135deg, var(--danger), #dc2626);
+        color: white;
+    }
+
+    .btn-outline {
+        background: transparent;
+        border: 2px solid var(--primary);
+        color: var(--primary);
+    }
+
+    .btn-outline:hover {
+        background: var(--primary);
+        color: white;
+    }
+
+    /* Cards */
+    .card {
+        background: var(--white);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: var(--shadow-md);
+        margin-bottom: 1.5rem;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: fadeIn 0.5s ease-out;
+        border: 1px solid var(--gray-200);
+    }
+
+    .card:hover {
+        box-shadow: var(--shadow-xl);
+    }
+
+    .card-header {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: var(--gray-900);
+    }
+
+    /* Stats Cards */
+    .stat-card {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        padding: 2rem;
+        border-radius: 1.25rem;
+        box-shadow: var(--shadow-lg);
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        animation: pulse 3s ease-in-out infinite;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px) scale(1.02);
+        box-shadow: var(--shadow-2xl);
+    }
+
+    .stat-card h3 {
+        font-size: 2.5rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        position: relative;
+        z-index: 1;
+    }
+
+    .stat-card p {
+        opacity: 0.95;
+        font-size: 1.1rem;
+        position: relative;
+        z-index: 1;
+    }
+
+    /* Grid */
+    .grid {
+        display: grid;
+        gap: 1.5rem;
+    }
+
+    .grid-2 {
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    }
+
+    .grid-3 {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    /* Agent Cards */
+    .agent-card {
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: 1.25rem;
+        padding: 1.75rem;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+        animation: slideIn 0.5s ease-out backwards;
+    }
+
+    .agent-card:nth-child(1) { animation-delay: 0.1s; }
+    .agent-card:nth-child(2) { animation-delay: 0.2s; }
+    .agent-card:nth-child(3) { animation-delay: 0.3s; }
+    .agent-card:nth-child(4) { animation-delay: 0.4s; }
+    .agent-card:nth-child(5) { animation-delay: 0.5s; }
+    .agent-card:nth-child(6) { animation-delay: 0.6s; }
+
+    .agent-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 5px;
+        background: linear-gradient(90deg, var(--primary), var(--secondary), var(--primary));
+        background-size: 200% 100%;
+        animation: shimmer 3s linear infinite;
+    }
+
+    .agent-card:hover {
+        transform: translateY(-8px) scale(1.02);
+        box-shadow: var(--shadow-xl);
+        border-color: var(--primary);
+    }
+
+    .agent-avatar {
+        width: 70px;
+        height: 70px;
+        border-radius: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+        margin-bottom: 1.25rem;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        box-shadow: var(--shadow-lg);
+        transition: all 0.3s ease;
+    }
+
+    .agent-card:hover .agent-avatar {
+        transform: rotate(5deg) scale(1.1);
+    }
+
+    /* Form Elements */
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.75rem;
+        font-weight: 600;
+        color: var(--gray-900);
+        font-size: 0.95rem;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 0.875rem 1rem;
+        border: 2px solid var(--gray-300);
+        border-radius: 0.75rem;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        background: var(--white);
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        transform: translateY(-1px);
+    }
+
+    /* Badge */
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.375rem 0.875rem;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    }
+
+    .badge-success {
+        background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+        color: #065f46;
+        box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+    }
+
+    .badge-warning {
+        background: linear-gradient(135deg, #fef3c7, #fde68a);
+        color: #92400e;
+    }
+
+    .badge-info {
+        background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+        color: #1e40af;
+    }
+
+    .badge-danger {
+        background: linear-gradient(135deg, #fee2e2, #fecaca);
+        color: #991b1b;
+    }
+
+    /* Status Dot */
+    .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 0.5rem;
+    }
+
+    .status-active {
+        background: var(--success);
+        box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2);
+        animation: pulse 2s ease-in-out infinite;
+    }
+
+    .status-inactive {
+        background: var(--gray-400);
+    }
+
+    /* Modal */
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(15, 23, 42, 0.7);
+        backdrop-filter: blur(8px);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        animation: fadeIn 0.3s ease-out;
+    }
+
+    .modal.active {
+        display: flex;
+    }
+
+    .modal-content {
+        background: var(--white);
+        border-radius: 1.5rem;
+        max-width: 950px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+        padding: 2.5rem;
+        box-shadow: var(--shadow-2xl);
+        animation: scaleIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 2px solid var(--gray-200);
+    }
+
+    .modal-header h2 {
+        font-size: 2rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .close-modal {
+        background: var(--gray-200);
+        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: var(--gray-700);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+    }
+
+    .close-modal:hover {
+        background: var(--gray-300);
+        transform: rotate(90deg);
+    }
+
+    /* Tabs */
+    .tabs {
+        display: flex;
+        gap: 0.5rem;
+        border-bottom: 2px solid var(--gray-200);
+        margin-bottom: 2rem;
+        overflow-x: auto;
+    }
+
+    .tab {
+        padding: 1rem 1.75rem;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+        color: var(--gray-600);
+        border-bottom: 3px solid transparent;
+        margin-bottom: -2px;
+        transition: all 0.3s ease;
+        white-space: nowrap;
+    }
+
+    .tab:hover {
+        color: var(--primary);
+        background: rgba(59, 130, 246, 0.05);
+    }
+
+    .tab.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+    }
+
+    .tab-content {
+        display: none;
+        animation: fadeIn 0.3s ease-out;
+    }
+
+    .tab-content.active {
+        display: block;
+    }
+
+    /* Slider */
+    .slider {
+        width: 100%;
+        -webkit-appearance: none;
+        height: 10px;
+        border-radius: 5px;
+        background: linear-gradient(to right, var(--gray-300), var(--primary));
+        outline: none;
+        transition: all 0.3s ease;
+    }
+
+    .slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        cursor: pointer;
+        box-shadow: var(--shadow-md);
+        transition: all 0.3s ease;
+    }
+
+    .slider::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+        box-shadow: var(--shadow-lg);
+    }
+
+    /* Tool Selector */
+    .tool-selector {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .tool-option {
+        padding: 1.25rem;
+        border: 2px solid var(--gray-300);
+        border-radius: 1rem;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        background: var(--white);
+    }
+
+    .tool-option:hover {
+        border-color: var(--primary);
+        background: rgba(59, 130, 246, 0.05);
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-md);
+    }
+
+    .tool-option.selected {
+        border-color: var(--primary);
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+    }
+
+    .tool-icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.75rem;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 1rem;
+        margin: 1.5rem 0;
+    }
+
+    .stat-item {
+        text-align: center;
+        padding: 1.25rem;
+        background: linear-gradient(135deg, var(--gray-100), var(--gray-200));
+        border-radius: 1rem;
+        transition: all 0.3s ease;
+    }
+
+    .stat-item:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-md);
+    }
+
+    .stat-item .value {
+        font-size: 1.75rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .stat-item .label {
+        font-size: 0.875rem;
+        color: var(--gray-600);
+        margin-top: 0.375rem;
+        font-weight: 600;
+    }
+
+    /* Alert */
+    .alert {
+        padding: 1.25rem;
+        border-radius: 1rem;
+        margin-bottom: 1.5rem;
+        border-left: 4px solid;
+        animation: slideIn 0.3s ease-out;
+    }
+
+    .alert-success {
+        background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+        color: #065f46;
+        border-color: var(--success);
+    }
+
+    .alert-info {
+        background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+        color: #1e40af;
+        border-color: var(--primary);
+    }
+
+    /* Toggle Switch */
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 60px;
+        height: 30px;
+    }
+
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--gray-300);
+        transition: 0.4s;
+        border-radius: 30px;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 24px;
+        width: 24px;
+        left: 3px;
+        bottom: 3px;
+        background: white;
+        transition: 0.4s;
+        border-radius: 50%;
+        box-shadow: var(--shadow-md);
+    }
+
+    input:checked + .toggle-slider {
+        background: linear-gradient(135deg, var(--success), #059669);
+    }
+
+    input:checked + .toggle-slider:before {
+        transform: translateX(30px);
+    }
+
+    /* Search and Filter */
+    .filter-bar {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .filter-bar select,
+    .filter-bar input {
+        padding: 0.75rem 1rem;
+        border: 2px solid var(--gray-300);
+        border-radius: 0.75rem;
+        font-size: 0.95rem;
+        transition: all 0.3s ease;
+        background: var(--white);
+    }
+
+    .filter-bar select:focus,
+    .filter-bar input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+    }
+
+    /* Loading Skeleton */
+    .skeleton {
+        background: linear-gradient(90deg, var(--gray-200) 25%, var(--gray-300) 50%, var(--gray-200) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 2s infinite;
+        border-radius: 0.5rem;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: var(--gray-200);
+        border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, var(--primary-dark), var(--secondary));
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .container {
+            padding: 1rem;
+        }
+        
+        header .container {
+            padding: 0 1rem;
+        }
+        
+        .grid-2, .grid-3 {
+            grid-template-columns: 1fr;
+        }
+        
+        .modal-content {
+            padding: 1.5rem;
+            margin: 1rem;
+        }
+        
+        .tabs {
+            gap: 0.25rem;
+        }
+        
+        .tab {
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+        }
+        
+        .stat-card h3 {
+            font-size: 2rem;
+        }
+        
+        .logo {
+            font-size: 1.25rem;
+        }
+    }
+
+    /* Utility Classes */
+    .text-center { text-align: center; }
+    .mt-2 { margin-top: 1rem; }
+    .mb-2 { margin-bottom: 1rem; }
+    .fw-bold { font-weight: 700; }
+</style>
+```
+
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="container">
+                <div class="logo">
+                    <span class="logo-icon">🤖</span>
+                    <span>AI Agent Builder</span>
+                </div>
+                <button class="btn btn-primary" onclick="openCreateModal()">
+                    <span>✨</span>
+                    Create New Agent
+                </button>
+            </div>
+        </header>
+
+```
+    <div class="container">
+        <!-- Stats Dashboard -->
+        <div class="grid grid-3" style="margin-bottom: 2.5rem;">
+            <div class="stat-card" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6);">
+                <h3>12</h3>
+                <p>Total Agents</p>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #10b981, #059669);">
+                <h3>8</h3>
+                <p>Active Agents</p>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                <h3>2,458</h3>
+                <p>Tasks Completed</p>
+            </div>
+        </div>
+
+        <!-- Agent List -->
+        <div class="card">
+            <div class="card-header">
+                <span>My AI Agents</span>
+                <div class="filter-bar">
+                    <select id="typeFilter" onchange="filterAgents()">
+                        <option value="">All Types</option>
+                        <option value="content-writer">Content Writer</option>
+                        <option value="customer-support">Customer Support</option>
+                        <option value="seo-optimizer">SEO Optimizer</option>
+                        <option value="data-analyst">Data Analyst</option>
+                        <option value="code-generator">Code Generator</option>
+                    </select>
+                    <select id="statusFilter" onchange="filterAgents()">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="agentList" class="grid grid-3"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Agent Modal -->
+<div id="agentModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">Create AI Agent</h2>
+            <button class="close-modal" onclick="closeModal()">×</button>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab(0)">📋 Basic Info</button>
+            <button class="tab" onclick="switchTab(1)">⚙️ Configuration</button>
+            <button class="tab" onclick="switchTab(2)">🛠️ Tools & Actions</button>
+            <button class="tab" onclick="switchTab(3)">🚀 Deployment</button>
+        </div>
+
+        <form id="agentForm" onsubmit="saveAgent(event)">
+            <!-- Tab 1: Basic Info -->
+            <div class="tab-content active" id="tab0">
+                <div class="form-group">
+                    <label>Agent Name *</label>
+                    <input type="text" id="agentName" required placeholder="e.g., Content Creator Pro">
+                </div>
+
+                <div class="form-group">
+                    <label>Agent Type *</label>
+                    <select id="agentType" required>
+                        <option value="">Select type...</option>
+                        <option value="content-writer">📝 Content Writer</option>
+                        <option value="data-analyst">📊 Data Analyst</option>
+                        <option value="customer-support">🎧 Customer Support</option>
+                        <option value="seo-optimizer">🔍 SEO Optimizer</option>
+                        <option value="email-assistant">📧 Email Assistant</option>
+                        <option value="code-generator">💻 Code Generator</option>
+                        <option value="social-media">📱 Social Media Manager</option>
+                        <option value="research">🔬 Research Assistant</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="agentDescription" rows="4" placeholder="Describe what this agent does and its purpose..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Avatar Emoji</label>
+                    <input type="text" id="agentEmoji" maxlength="2" placeholder="🤖" value="🤖">
+                </div>
+            </div>
+
+            <!-- Tab 2: Configuration -->
+            <div class="tab-content" id="tab1">
+                <div class="form-group">
+                    <label>AI Model *</label>
+                    <select id="aiModel" required>
+                        <option value="gpt-4">GPT-4 (Most Capable)</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Fast & Efficient)</option>
+                        <option value="claude-3">Claude 3 Opus (Best for Writing)</option>
+                        <option value="claude-3-sonnet">Claude 3 Sonnet (Balanced)</option>
+                        <option value="gemini-pro">Gemini Pro (Google AI)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Temperature: <span id="tempValue" style="color: var(--primary); font-weight: 700;">0.7</span></label>
+                    <input type="range" class="slider" id="temperature" min="0" max="1" step="0.1" value="0.7" oninput="updateTempValue(this.value)">
+                    <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.875rem; color: var(--gray-600);">
+                        <span>🎯 Focused</span>
+                        <span>🎨 Creative</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Max Tokens</label>
+                    <input type="number" id="maxTokens" value="2000" min="100" max="8000" step="100">
+                    <small style="color: var(--gray-600);">Maximum length of responses (100-8000)</small>
+                </div>
+
+                <div class="form-group">
+                    <label>System Instructions *</label>
+                    <textarea id="systemInstructions" rows="8" required style="font-family: 'SF Mono', Monaco, monospace;" placeholder="You are a helpful AI assistant that...
+```
+
+Your responsibilities include:
+
+- Task 1
+- Task 2
+- Task 3
+
+Always respond in a professional and helpful manner.”></textarea>
+</div>
+
+```
+                <div class="form-group">
+                    <label>Response Format</label>
+                    <select id="responseFormat">
+                        <option value="text">Plain Text</option>
+                        <option value="markdown">Markdown</option>
+                        <option value="json">JSON</option>
+                        <option value="html">HTML</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Tab 3: Tools & Actions -->
+            <div class="tab-content" id="tab2">
+                <div class="alert alert-info">
+                    <strong>🎯 Select the tools and capabilities your agent can use</strong>
+                </div>
+
+                <div class="form-group">
+                    <label>Available Tools</label>
+                    <div class="tool-selector" id="toolSelector">
+                        <div class="tool-option" onclick="toggleTool(this, 'web-search')">
+                            <div class="tool-icon">🔍</div>
+                            <div style="font-weight: 600;">Web Search</div>
+                        </div>
+                        <div class="tool-option" onclick="toggleTool(this, 'file-upload')">
+                            <div class="tool-icon">📎</div>
+                            <div style="font-weight: 600;">File Upload</div>
+                        </div>
+                        <div class="tool-option" onclick="toggleTool(this, 'image-gen')">
+                            <div class="tool-icon">🎨</div>
+                            <div style="font-weight: 600;">Image Gen</div>
+                        </div>
+                        <div class="tool-option" onclick="toggleTool(this, 'code-exec')">
+                            <div class="tool-icon">💻</div>
+                            <div style="font-weight: 600;">Code Exec</div>
+                        </div>
+                        <div class="tool-option" onclick="toggleTool(this, 'email')">
+                            <div class="tool-icon">📧</div>
+                            <div style="font-weight: 600;">Send Email</div>
+                        </div>
+                        <div class="tool-option" onclick="toggleTool(this, 'calendar')">
+                            <div class="tool-icon">📅</div>
+                            <div style="font-weight: 600;">Calendar</div>
+                        </div>
+                        <div class="tool-option" onclick="toggleTool(this, 'database')">
+                            <div class="tool-icon">💾</div>
+                            <div style="font-weight: 600;">Database</div>
+                        </div>
+                        <div class="tool-option" onclick="toggleTool(this, 'api-call')">
+                            <div class="tool-icon">🔗</div>
+                            <div style="font-weight: 600;">API Calls</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Custom Functions (Advanced)</label>
+                    <textarea id="customFunctions" rows="6" style="font-family: 'SF Mono', Monaco, monospace; font-size: 0.9rem;" placeholder='{
+```
+
+“function”: “get_weather”,
+“description”: “Get current weather”,
+“parameters”: {
+“location”: “string”
+}
+}’></textarea>
+</div>
+
+```
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;">
+                        <input type="checkbox" id="allowInternet" style="width: auto;">
+                        <span>Allow internet access</span>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;">
+                        <input type="checkbox" id="allowFileAccess" style="width: auto;">
+                        <span>Allow file system access</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Tab 4: Deployment -->
+            <div class="tab-content" id="tab3">
+                <div class="form-group">
+                    <label>Deployment Method</label>
+                    <select id="deploymentMethod">
+                        <option value="api">🔌 API Endpoint</option>
+                        <option value="widget">📦 Embed Widget</option>
+                        <option value="webhook">🔗 Webhook Integration</option>
+                        <option value="scheduled">⏰ Scheduled Task</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Trigger Type</label>
+                    <select id="triggerType" onchange="toggleScheduleConfig()">
+                        <option value="manual">🖱️ Manual (On-Demand)</option>
+                        <option value="scheduled">⏰ Scheduled (Cron)</option>
+                        <option value="event">⚡ Event-Based</option>
+                        <option value="webhook">🔗 Webhook</option>
+                        <option value="email">📧 Email Trigger</option>
+                    </select>
+                </div>
+
+                <div id="scheduleConfig" style="display: none;">
+                    <div class="form-group">
+                        <label>Schedule (Cron Expression)</label>
+                        <input type="text" id="cronExpression" placeholder="0 9 * * *">
+                        <small style="color: var(--gray-600);">Examples: "0 9 * * *" (9 AM daily), "*/15 * * * *" (Every 15 min)</small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Environment Variables</label>
+                    <textarea id="envVars" rows="4" style="font-family: 'SF Mono', Monaco, monospace;" placeholder="API_KEY=your-api-key
+```
+
+DATABASE_URL=postgresql://…”></textarea>
+</div>
+
+```
+                <div class="form-group">
+                    <label>Rate Limiting (requests per hour)</label>
+                    <input type="number" id="rateLimit" value="100" min="1" max="10000">
+                </div>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;">
+                        <input type="checkbox" id="autoScale" checked style="width: auto;">
+                        <span>Enable auto-scaling</span>
+                    </label>
+                </div>
+
+                <div class="alert alert-success">
+                    <strong>✅ Your agent will be deployed automatically upon creation</strong>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2.5rem; padding-top: 2rem; border-top: 2px solid var(--gray-200);">
+                <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">
+                    <span>💾</span>
+                    Save Agent
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Agent Details Modal -->
+<div id="detailsModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="detailsAgentName">Agent Details</h2>
+            <button class="close-modal" onclick="closeDetailsModal()">×</button>
+        </div>
+        <div id="detailsContent"></div>
+    </div>
+</div>
+
+<script>
+    // Mock Data
+    let agents = [
+        {
+            id: 1,
+            name: 'Blog Content Writer',
+            type: 'content-writer',
+            emoji: '📝',
+            description: 'Creates SEO-optimized blog posts and articles',
+            model: 'gpt-4',
+            status: 'active',
+            tasksCompleted: 234,
+            avgResponseTime: '2.3s',
+            successRate: 98,
+            lastActive: '2 hours ago'
+        },
+        {
+            id: 2,
+            name: 'Customer Support Bot',
+            type: 'customer-support',
+            emoji: '🎧',
+            description: 'Handles customer inquiries and support tickets',
+            model: 'claude-3',
+            status: 'active',
+            tasksCompleted: 1456,
+            avgResponseTime: '1.8s',
+            successRate: 96,
+            lastActive: '5 minutes ago'
+        },
+        {
+            id: 3,
+            name: 'SEO Optimizer',
+            type: 'seo-optimizer',
+            emoji: '🔍',
+            description: 'Optimizes content for search engines',
+            model: 'gpt-3.5-turbo',
+            status: 'active',
+            tasksCompleted: 445,
+            avgResponseTime: '1.2s',
+            successRate: 99,
+            lastActive: '15 minutes ago'
+        },
+        {
+            id: 4,
+            name: 'Email Campaign Assistant',
+            type: 'email-assistant',
+            emoji: '📧',
+            description: 'Drafts and manages email campaigns',
+            model: 'claude-3-sonnet',
+            status: 'inactive',
+            tasksCompleted: 89,
+            avgResponseTime: '2.1s',
+            successRate: 94,
+            lastActive: '2 days ago'
+        },
+        {
+            id: 5,
+            name: 'Data Analysis Bot',
+            type: 'data-analyst',
+            emoji: '📊',
+            description: 'Analyzes data and generates insights',
+            model: 'gpt-4',
+            status: 'active',
+            tasksCompleted: 178,
+            avgResponseTime: '3.5s',
+            successRate: 97,
+            lastActive: '1 hour ago'
+        },
+        {
+            id: 6,
+            name: 'Code Generator',
+            type: 'code-generator',
+            emoji: '💻',
+            description: 'Generates and reviews code',
+            model: 'gpt-4',
+            status: 'active',
+            tasksCompleted: 312,
+            avgResponseTime: '2.8s',
+            successRate: 95,
+            lastActive: '30 minutes ago'
+        }
+    ];
+
+    let selectedTools = [];
+    let allAgents = [...agents];
+
+    // Render Agent List
+    function renderAgents(agentsToRender = agents) {
+        const container = document.getElementById('agentList');
+        container.innerHTML = agentsToRender.map(agent => `
+            <div class="agent-card">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                    <div class="agent-avatar">${agent.emoji}</div>
+                    <div>
+                        <span class="status-dot ${agent.status === 'active' ? 'status-active' : 'status-inactive'}"></span>
+                        <span class="badge ${agent.status === 'active' ? 'badge-success' : 'badge-warning'}">${agent.status === 'active' ? 'Active' : 'Inactive'}</span>
+                    </div>
+                </div>
+                
+                <h3 style="margin-bottom: 0.75rem; font-size: 1.25rem; font-weight: 700; color: var(--gray-900);">${agent.name}</h3>
+                <p style="color: var(--gray-600); font-size: 0.9rem; margin-bottom: 1.25rem; line-height: 1.5;">${agent.description}</p>
+                
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="value">${agent.tasksCompleted}</div>
+                        <div class="label">Tasks</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="value">${agent.avgResponseTime}</div>
+                        <div class="label">Avg Time</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="value">${agent.successRate}%</div>
+                        <div class="label">Success</div>
+                    </div>
+                </div>
+                
+                <p style="font-size: 0.875rem; color: var(--gray-500); margin: 1.25rem 0; font-weight: 500;">Last active: ${agent.lastActive}</p>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                    <button class="btn btn-primary" onclick="viewAgent(${agent.id})" style="padding: 0.75rem; font-size: 0.9rem;">
+                        <span>👁️</span>
+                        View
+                    </button>
+                    <button class="btn btn-outline" onclick="editAgent(${agent.id})" style="padding: 0.75rem; font-size: 0.9rem;">
+                        <span>⚙️</span>
+                        Configure
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Filter Agents
+    function filterAgents() {
+        const typeFilter = document.getElementById('typeFilter').value;
+        const statusFilter = document.getElementById('statusFilter').value;
+        
+        let filtered = allAgents;
+        
+        if (typeFilter) {
+            filtered = filtered.filter(a => a.type === typeFilter);
+        }
+        
+        if (statusFilter) {
+            filtered = filtered.filter(a => a.status === statusFilter);
+        }
+        
+        renderAgents(filtered);
+    }
+
+    // Modal Functions
+    function openCreateModal() {
+        document.getElementById('modalTitle').textContent = 'Create New AI Agent';
+        document.getElementById('agentForm').reset();
+        document.getElementById('agentModal').classList.add('active');
+        selectedTools = [];
+        document.querySelectorAll('.tool-option').forEach(el => el.classList.remove('selected'));
+        switchTab(0);
+    }
+
+    function closeModal() {
+        document.getElementById('agentModal').classList.remove('active');
+    }
+
+    function closeDetailsModal() {
+        document.getElementById('detailsModal').classList.remove('active');
+    }
+
+    // Tab Switching
+    function switchTab(index) {
+        document.querySelectorAll('.tab').forEach((tab, i) => {
+            tab.classList.toggle('active', i === index);
+        });
+        document.querySelectorAll('.tab-content').forEach((content, i) => {
+            content.classList.toggle('active', i === index);
+        });
+    }
+
+    // Temperature Slider
+    function updateTempValue(value) {
+        document.getElementById('tempValue').textContent = value;
+    }
+
+    // Tool Selection
+    function toggleTool(element, tool) {
+        element.classList.toggle('selected');
+        const index = selectedTools.indexOf(tool);
+        if (index > -1) {
+            selectedTools.splice(index, 1);
+        } else {
+            selectedTools.push(tool);
+        }
+    }
+
+    // Toggle Schedule Config
+    function toggleScheduleConfig() {
+        const triggerType = document.getElementById('triggerType').value;
+        const scheduleConfig = document.getElementById('scheduleConfig');
+        scheduleConfig.style.display = triggerType === 'scheduled' ? 'block' : 'none';
+    }
+
+    // Save Agent
+    function saveAgent(event) {
+        event.preventDefault();
+        
+        const newAgent = {
+            id: allAgents.length + 1,
+            name: document.getElementById('agentName').value,
+            type: document.getElementById('agentType').value,
+            emoji: document.getElementById('agentEmoji').value || '🤖',
+            description: document.getElementById('agentDescription').value,
+            model: document.getElementById('aiModel').value,
+            status: 'active',
+            tasksCompleted: 0,
+            avgResponseTime: '0s',
+            successRate: 0,
+            lastActive: 'Just now'
+        };
+        
+        allAgents.push(newAgent);
+        agents = [...allAgents];
+        renderAgents();
+        closeModal();
+        
+        // Show success notification
+        const notification = document.createElement('div');
+        notification.className = 'alert alert-success';
+        notification.style.position = 'fixed';
+        notification.style.top = '20px';
+        notification.style.right = '20px';
+        notification.style.zIndex = '9999';
+        notification.innerHTML = '<strong>✅ Agent created successfully!</strong>';
+        document.body.appendChild(notification);
+        setTimeout(() => notification.remove(), 3000);
+    }
+
+    // View Agent Details
+    function viewAgent(id) {
+        const agent = allAgents.find(a => a.id === id);
+        if (!agent) return;
+        
+        document.getElementById('detailsAgentName').textContent = agent.name;
+        document.getElementById('detailsContent').innerHTML = `
+            <div class="agent-avatar" style="margin: 0 auto 1.5rem;">${agent.emoji}</div>
+            
+            <div class="stats-grid" style="margin-bottom: 2rem;">
+                <div class="stat-item">
+                    <div class="value">${agent.tasksCompleted}</div>
+                    <div class="label">Total Tasks</div>
+                </div>
+                <div class="stat-item">
+                    <div class="value">${agent.avgResponseTime}</div>
+                    <div class="label">Avg Response</div>
+                </div>
+                <div class="stat-item">
+                    <div class="value">${agent.successRate}%</div>
+                    <div class="label">Success Rate</div>
+                </div>
+                <div class="stat-item">
+                    <div class="value">${agent.status === 'active' ? 'Active' : 'Inactive'}</div>
+                    <div class="label">Status</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 style="margin-bottom: 1rem; color: var(--gray-900);">📋 Agent Information</h3>
+                <p style="margin-bottom: 0.75rem;"><strong>Type:</strong> ${agent.type}</p>
+                <p style="margin-bottom: 0.75rem;"><strong>Model:</strong> ${agent.model}</p>
+                <p style="margin-bottom: 0.75rem;"><strong>Description:</strong> ${agent.description}</p>
+                <p><strong>Last Active:</strong> ${agent.lastActive}</p>
+            </div>
+            
+            <div class="card">
+                <h3 style="margin-bottom: 1rem; color: var(--gray-900);">📊 Performance Metrics</h3>
+                <p style="margin-bottom: 0.75rem;">📈 Tasks completed today: <strong>45</strong></p>
+                <p style="margin-bottom: 0.75rem;">⏱️ Average response time: <strong>${agent.avgResponseTime}</strong></p>
+                <p style="margin-bottom: 0.75rem;">✅ Success rate: <strong>${agent.successRate}%</strong></p>
+                <p>🔄 Uptime: <strong>99.8%</strong></p>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; margin-top: 2rem; flex-wrap: wrap;">
+                <button class="btn btn-primary" onclick="editAgent(${agent.id}); closeDetailsModal();">
+                    <span>⚙️</span>
+                    Configure Agent
+                </button>
+                <button class="btn ${agent.status === 'active' ? 'btn-danger' : 'btn-success'}" onclick="toggleAgentStatus(${agent.id})">
+                    <span>${agent.status === 'active' ? '⏸️' : '▶️'}</span>
+                    ${agent.status === 'active' ? 'Deactivate' : 'Activate'}
+                </button>
+            </div>
+        `;
+        
+        document.getElementById('detailsModal').classList.add('active');
+    }
+
+    // Edit Agent
+    function editAgent(id) {
+        const agent = allAgents.find(a => a.id === id);
+        if (!agent) return;
+        
+        document.getElementById('modalTitle').textContent = 'Edit AI Agent';
+        document.getElementById('agentName').value = agent.name;
+        document.getElementById('agentType').value = agent.type;
+        document.getElementById('agentEmoji').value = agent.emoji;
+        document.getElementById('agentDescription').value = agent.description;
+        document.getElementById('aiModel').value = agent.model;
+        
+        document.getElementById('agentModal').classList.add('active');
+    }
+
+    // Toggle Agent Status
+    function toggleAgentStatus(id) {
+        const agent = allAgents.find(a => a.id === id);
+        if (agent) {
+            agent.status = agent.status === 'active' ? 'inactive' : 'active';
+            agents = [...allAgents];
+            renderAgents();
+            closeDetailsModal();
+            
+            const notification = document.createElement('div');
+            notification.className = 'alert alert-success';
+            notification.style.position = 'fixed';
+            notification.style.top = '20px';
+            notification.style.right = '20px';
+            notification.style.zIndex = '9999';
+            notification.innerHTML = `<strong>Agent ${agent.status === 'active' ? 'activated' : 'deactivated'} successfully!</strong>`;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+        }
+    }
+
+    // Initialize
+    renderAgents();
+</script>
+```
+
+</body>
+</html>
