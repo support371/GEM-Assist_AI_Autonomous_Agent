@@ -580,7 +580,7 @@ app.get("/", (_, res) => {
 
 const PORT = parseInt(process.env.AGENT_PORT || "3000", 10);
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(\`Autonomous Agent running at http://localhost:\${PORT}\`);
+  console.log(`Autonomous Agent running at http://localhost:${PORT}`);
 });
 
 export { app };
