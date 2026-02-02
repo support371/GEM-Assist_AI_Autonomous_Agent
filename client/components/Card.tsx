@@ -9,10 +9,13 @@ import Animated, {
 
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
-import { Spacing, BorderRadius } from "@/constants/theme";
+import { Spacing, BorderRadius, Shadows } from "@/constants/theme";
+
+type ShadowLevel = "sm" | "md" | "lg" | "xl" | "2xl" | "primary" | "secondary";
 
 interface CardProps {
   elevation?: number;
+  shadow?: ShadowLevel;
   title?: string;
   description?: string;
   children?: React.ReactNode;
@@ -48,6 +51,7 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export function Card({
   elevation = 1,
+  shadow,
   title,
   description,
   children,
@@ -56,19 +60,26 @@ export function Card({
 }: CardProps) {
   const { theme } = useTheme();
   const scale = useSharedValue(1);
+  const translateY = useSharedValue(0);
 
   const cardBackgroundColor = getBackgroundColorForElevation(elevation, theme);
+  const shadowStyle = shadow ? Shadows[shadow] : undefined;
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [
+      { scale: scale.value },
+      { translateY: translateY.value },
+    ],
   }));
 
   const handlePressIn = () => {
     scale.value = withSpring(0.98, springConfig);
+    translateY.value = withSpring(2, springConfig);
   };
 
   const handlePressOut = () => {
     scale.value = withSpring(1, springConfig);
+    translateY.value = withSpring(0, springConfig);
   };
 
   return (
@@ -81,6 +92,7 @@ export function Card({
         {
           backgroundColor: cardBackgroundColor,
         },
+        shadowStyle,
         animatedStyle,
         style,
       ]}

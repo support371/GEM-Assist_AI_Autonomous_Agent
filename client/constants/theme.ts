@@ -142,4 +142,73 @@ export const Gradients = {
   primary: ["#3B82F6", "#A855F7"],
   secondary: ["#6366F1", "#EC4899"],
   dark: ["#1E293B", "#0F172A"],
+  hero: ["#667eea", "#764ba2"],
+  success: ["#10B981", "#059669"],
+  warning: ["#F59E0B", "#D97706"],
+  danger: ["#EF4444", "#DC2626"],
+};
+
+export const Shadows = {
+  sm: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  md: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  lg: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 6,
+  },
+  xl: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.1,
+    shadowRadius: 25,
+    elevation: 9,
+  },
+  "2xl": {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 25 },
+    shadowOpacity: 0.25,
+    shadowRadius: 50,
+    elevation: 12,
+  },
+  primary: {
+    shadowColor: "#3B82F6",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  secondary: {
+    shadowColor: "#8B5CF6",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+};
+
+export const AnimationDurations = {
+  fast: 150,
+  normal: 300,
+  slow: 500,
+};
+
+export const AnimationEasing = {
+  easeOut: [0.4, 0, 0.2, 1] as const,
+  easeIn: [0.4, 0, 1, 1] as const,
+  easeInOut: [0.4, 0, 0.2, 1] as const,
+  spring: [0.175, 0.885, 0.32, 1.275] as const,
 };

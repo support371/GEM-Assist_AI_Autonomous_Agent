@@ -38,23 +38,34 @@
 ## Screen Specifications
 
 ### Landing Page
-**Purpose**: Convert visitors into users by showcasing AI agent capabilities
+**Purpose**: Convert visitors into users by showcasing AI agent capabilities and enable Expo Go app preview
 
 **Layout**:
-- Transparent header with logo, nav links, CTA button (fixed on scroll)
-- Hero section with animated gradient background
-- Stats section (4-column grid)
-- Features grid (4 columns desktop, 2 tablet, 1 mobile)
-- CTA section with email capture
-- Footer
+- Full-screen gradient background (#667eea to #764ba2)
+- Centered content wrapper (max-width: 800px desktop, 900px large)
+- Two-step card layout (side-by-side on desktop, stacked on mobile)
+- Responsive breakpoints: 768px tablet, 1024px desktop
 
 **Components**:
-- Gradient hero background with radial overlay
-- Feature cards with icon, title, description (hover state: border color shift)
-- Stat counter animations on scroll
-- Email input with inline submit button
+- **Step Cards**: White cards with shimmer border animation, hover lift effect, rounded corners (1.25rem)
+- **QR Section**: Gradient card (primary to secondary) with branded QR code
+- **Store Buttons**: Outlined buttons with hover shimmer effect
+- **Status Badge**: Pill with pulsing status dot indicator
+- **Logo**: Floating animation, text shadow for depth
 
-**Safe Areas**: Standard web margins (max-width: 1280px, px-4 sm:px-6 lg:px-8)
+**Animations**:
+- `fadeIn`: 0.6s ease-out on wrapper load
+- `slideIn`: 0.5s staggered on cards (0.1s, 0.2s delays)
+- `shimmer`: 3s infinite on card top borders
+- `float`: 3s ease-in-out infinite on logo icon
+- `pulse`: 2s ease-in-out infinite on status dot
+
+**Dark Mode**: Full support via `prefers-color-scheme: dark`
+- Background: #1e1b4b to #312e81 gradient
+- Cards: #1e293b with #334155 borders
+- Text: slate-50 primary, slate-400 secondary
+
+**Safe Areas**: Standard web margins (max-width: 800px, padding: 32px 20px mobile, 48px 32px desktop)
 
 ---
 
