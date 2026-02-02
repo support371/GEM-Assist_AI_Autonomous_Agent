@@ -18,6 +18,7 @@ import Animated, {
 
 import { ConversationItem } from "@/components/ConversationItem";
 import { EmptyState } from "@/components/EmptyState";
+import { ConversationSearch } from "@/components/ConversationSearch";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Gradients } from "@/constants/theme";
@@ -39,6 +40,7 @@ export default function HomeScreen() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   const fabScale = useSharedValue(1);
 
@@ -132,18 +134,47 @@ export default function HomeScreen() {
     [navigation]
   );
 
+  const handleSearchSelect = (conversation: Conversation) => {
+    setShowSearch(false);
+    navigation.navigate("Chat", { conversationId: conversation.id });
+  };
+
   const renderHeader = () => (
     <View style={styles.headerSection}>
-      <ThemedText type="h3" style={styles.sectionTitle}>
-        Recent Chats
-      </ThemedText>
-      <ThemedText style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
-        {conversations.length > 0
-          ? `${conversations.length} conversation${conversations.length > 1 ? "s" : ""}`
-          : "Start a new conversation to begin"}
-      </ThemedText>
+      <View style={styles.headerRow}>
+        <View>
+          <ThemedText type="h3" style={styles.sectionTitle}>
+            Recent Chats
+          </ThemedText>
+          <ThemedText style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+            {conversations.length > 0
+              ? `${conversations.length} conversation${conversations.length > 1 ? "s" : ""}`
+              : "Start a new conversation to begin"}
+          </ThemedText>
+        </View>
+        {conversations.length > 0 ? (
+          <Pressable
+            onPress={() => setShowSearch(true)}
+            style={[styles.searchButton, { backgroundColor: theme.backgroundSecondary }]}
+          >
+            <Feather name="search" size={20} color={theme.textSecondary} />
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
+
+  if (showSearch) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.backgroundRoot, paddingTop: headerHeight }]}>
+        <ConversationSearch
+          conversations={conversations}
+          onSelect={handleSearchSelect}
+          onClose={() => setShowSearch(false)}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
@@ -211,6 +242,18 @@ const styles = StyleSheet.create({
   headerSection: {
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.xl,
+  },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  searchButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sectionTitle: {
     marginBottom: Spacing.xs,

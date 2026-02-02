@@ -9,6 +9,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 
+import { VoiceInput } from "@/components/VoiceInput";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Gradients } from "@/constants/theme";
 
@@ -16,6 +17,7 @@ interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  showVoiceInput?: boolean;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -24,10 +26,15 @@ export function ChatInput({
   onSend,
   disabled = false,
   placeholder = "Describe what you want to build...",
+  showVoiceInput = true,
 }: ChatInputProps) {
   const { theme } = useTheme();
   const [message, setMessage] = useState("");
   const scale = useSharedValue(1);
+
+  const handleVoiceTranscript = useCallback((text: string) => {
+    setMessage((prev) => prev + (prev ? " " : "") + text);
+  }, []);
 
   const handleSend = useCallback(() => {
     const trimmed = message.trim();
@@ -65,6 +72,11 @@ export function ChatInput({
           },
         ]}
       >
+        {showVoiceInput && !message ? (
+          <View style={styles.voiceInputWrapper}>
+            <VoiceInput onTranscript={handleVoiceTranscript} disabled={disabled} />
+          </View>
+        ) : null}
         <TextInput
           style={[styles.input, { color: theme.text }]}
           value={message}
@@ -108,10 +120,14 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     borderRadius: BorderRadius.xl,
     borderWidth: 1,
-    paddingLeft: Spacing.lg,
+    paddingLeft: Spacing.sm,
     paddingRight: Spacing.sm,
     paddingVertical: Spacing.sm,
     minHeight: 52,
+  },
+  voiceInputWrapper: {
+    marginRight: Spacing.xs,
+    marginBottom: 2,
   },
   input: {
     flex: 1,
@@ -120,6 +136,7 @@ const styles = StyleSheet.create({
     maxHeight: 120,
     paddingTop: Platform.OS === "ios" ? 8 : 4,
     paddingBottom: Platform.OS === "ios" ? 8 : 4,
+    paddingLeft: Spacing.sm,
   },
   sendButton: {
     marginLeft: Spacing.sm,

@@ -18,6 +18,9 @@ import { WebPreview } from "@/components/WebPreview";
 import { QuickPrompts } from "@/components/QuickPrompts";
 import { TaskExecutor } from "@/components/TaskExecutor";
 import { ProjectFiles } from "@/components/ProjectFiles";
+import { AgentTemplates, AgentTemplateBadge, agentTemplates, type AgentTemplate } from "@/components/AgentTemplates";
+import { ExportCode } from "@/components/ExportCode";
+import { TokenUsage } from "@/components/TokenUsage";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
@@ -117,8 +120,12 @@ export default function ChatScreen() {
   const [currentTaskId, setCurrentTaskId] = useState<string>();
   const [showCodePreview, setShowCodePreview] = useState(false);
   const [showWebPreview, setShowWebPreview] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [codeBlocks, setCodeBlocks] = useState<CodeBlock[]>([]);
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
+  const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
+  const [tokenUsage, setTokenUsage] = useState({ input: 0, output: 0 });
 
   useEffect(() => {
     fetchConversation();
@@ -140,15 +147,26 @@ export default function ChatScreen() {
             </Pressable>
           ) : null}
           {codeBlocks.length > 0 ? (
-            <Pressable
-              onPress={() => {
-                if (Platform.OS !== "web") Haptics.selectionAsync();
-                setShowCodePreview(true);
-              }}
-              style={styles.headerButton}
-            >
-              <Feather name="code" size={20} color={theme.link} />
-            </Pressable>
+            <>
+              <Pressable
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                  setShowCodePreview(true);
+                }}
+                style={styles.headerButton}
+              >
+                <Feather name="code" size={20} color={theme.link} />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.selectionAsync();
+                  setShowExport(true);
+                }}
+                style={styles.headerButton}
+              >
+                <Feather name="download" size={20} color={theme.linkSecondary} />
+              </Pressable>
+            </>
           ) : null}
         </View>
       ),
@@ -255,6 +273,13 @@ export default function ChatScreen() {
                 setStreamingContent("");
                 setAgentStatus("complete");
                 
+                const inputTokens = content.length / 4;
+                const outputTokens = fullContent.length / 4;
+                setTokenUsage((prev) => ({
+                  input: prev.input + Math.round(inputTokens),
+                  output: prev.output + Math.round(outputTokens),
+                }));
+                
                 const newBlocks = extractCodeBlocks(fullContent);
                 if (newBlocks.length > 0) {
                   setCodeBlocks((prev) => [...prev, ...newBlocks]);
@@ -316,12 +341,38 @@ export default function ChatScreen() {
     );
   };
 
+  const handleTemplateSelect = (template: AgentTemplate) => {
+    setSelectedTemplate(template);
+    setShowTemplates(false);
+  };
+
   const renderEmptyContent = () => {
     if (isLoading) return null;
     
     return (
       <View style={styles.emptyContainer}>
         <EmptyState type="conversation" />
+        
+        {!selectedTemplate ? (
+          <Pressable
+            onPress={() => setShowTemplates(true)}
+            style={[styles.templateToggle, { backgroundColor: theme.backgroundSecondary }]}
+          >
+            <Feather name="cpu" size={16} color={theme.link} />
+            <ThemedText style={[styles.templateToggleText, { color: theme.textSecondary }]}>
+              Choose an agent template
+            </ThemedText>
+            <Feather name="chevron-right" size={16} color={theme.textTertiary} />
+          </Pressable>
+        ) : (
+          <View style={styles.selectedTemplateContainer}>
+            <AgentTemplateBadge
+              template={selectedTemplate}
+              onClear={() => setSelectedTemplate(null)}
+            />
+          </View>
+        )}
+        
         <QuickPrompts onSelect={handleSend} />
       </View>
     );
@@ -374,12 +425,22 @@ export default function ChatScreen() {
       />
 
       <View style={{ paddingBottom: insets.bottom }}>
+        {tokenUsage.input + tokenUsage.output > 0 ? (
+          <View style={styles.tokenUsageContainer}>
+            <TokenUsage
+              inputTokens={tokenUsage.input}
+              outputTokens={tokenUsage.output}
+            />
+          </View>
+        ) : null}
         <ChatInput
           onSend={handleSend}
           disabled={isStreaming}
           placeholder={
             isStreaming
               ? "Agent is working..."
+              : selectedTemplate
+              ? `Ask the ${selectedTemplate.name}...`
               : "Describe what you want to build..."
           }
         />
@@ -435,6 +496,43 @@ export default function ChatScreen() {
           ) : null}
         </View>
       </Modal>
+
+      <Modal
+        visible={showExport}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowExport(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}>
+          <View style={[styles.modalHeader, { paddingTop: insets.top + Spacing.md }]}>
+            <ThemedText type="h4">Export Code</ThemedText>
+            <Pressable onPress={() => setShowExport(false)}>
+              <Feather name="x" size={24} color={theme.text} />
+            </Pressable>
+          </View>
+          <ExportCode codeBlocks={codeBlocks} onClose={() => setShowExport(false)} />
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showTemplates}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowTemplates(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: theme.backgroundRoot }]}>
+          <View style={[styles.modalHeader, { paddingTop: insets.top + Spacing.md }]}>
+            <ThemedText type="h4">Agent Templates</ThemedText>
+            <Pressable onPress={() => setShowTemplates(false)}>
+              <Feather name="x" size={24} color={theme.text} />
+            </Pressable>
+          </View>
+          <AgentTemplates
+            onSelect={handleTemplateSelect}
+            selectedId={selectedTemplate?.id}
+          />
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -449,6 +547,29 @@ const styles = StyleSheet.create({
   emptyContainer: {
     flex: 1,
     paddingTop: Spacing["3xl"],
+  },
+  templateToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.sm,
+  },
+  templateToggleText: {
+    flex: 1,
+    fontSize: 14,
+  },
+  selectedTemplateContainer: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+    alignItems: "flex-start",
+  },
+  tokenUsageContainer: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
   },
   thinkingContainer: {
     marginBottom: Spacing.lg,

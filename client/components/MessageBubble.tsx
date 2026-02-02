@@ -5,6 +5,8 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
+import { SyntaxHighlighter } from "@/components/SyntaxHighlighter";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Fonts } from "@/constants/theme";
 import type { Message } from "@/types/chat";
@@ -48,12 +50,11 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
         const textBefore = content.slice(lastIndex, match.index).trim();
         if (textBefore) {
           parts.push(
-            <ThemedText 
-              key={`text-${lastIndex}`} 
-              style={[styles.messageText, isUser && { color: "#FFFFFF" }]}
-            >
-              {textBefore}
-            </ThemedText>
+            <MarkdownRenderer
+              key={`text-${lastIndex}`}
+              content={textBefore}
+              isUser={isUser}
+            />
           );
         }
       }
@@ -91,14 +92,7 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
               </ThemedText>
             </Pressable>
           </View>
-          <ThemedText
-            style={[
-              styles.codeText,
-              { color: theme.codeText, fontFamily: Fonts?.mono || "monospace" },
-            ]}
-          >
-            {code}
-          </ThemedText>
+          <SyntaxHighlighter code={code} language={language} />
         </View>
       );
 
@@ -109,24 +103,22 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
       const remainingText = content.slice(lastIndex).trim();
       if (remainingText) {
         parts.push(
-          <ThemedText 
-            key={`text-${lastIndex}`} 
-            style={[styles.messageText, isUser && { color: "#FFFFFF" }]}
-          >
-            {remainingText}
-          </ThemedText>
+          <MarkdownRenderer
+            key={`text-${lastIndex}`}
+            content={remainingText}
+            isUser={isUser}
+          />
         );
       }
     }
 
     if (parts.length === 0) {
       parts.push(
-        <ThemedText 
-          key="full" 
-          style={[styles.messageText, isUser && { color: "#FFFFFF" }]}
-        >
-          {content}
-        </ThemedText>
+        <MarkdownRenderer
+          key="full"
+          content={content}
+          isUser={isUser}
+        />
       );
     }
 
