@@ -1,205 +1,313 @@
-import * as fs from "fs";
-import * as path from "path";
-import { Tool, ToolInput, ToolOutput } from "./types";
+// file: server/agent/tools.ts
+import fs from "node:fs/promises";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { ToolName, parseToolArgs } from "./toolSchemas";
 
-const WORKSPACE_DIR = process.cwd();
+export type ToolResult =
+  | { ok: true; data: unknown }
+  | { ok: false; error: { code: string; message: string; details?: unknown } };
 
-function logToolExecution(toolName: string, input: ToolInput, output: ToolOutput) {
-  const timestamp = new Date().toISOString();
-  console.log(`[TOOL] ${timestamp} | ${toolName}`);
-  console.log(`  Input: ${JSON.stringify(input)}`);
-  console.log(`  Output: ${output.success ? "SUCCESS" : "FAILED"} - ${JSON.stringify(output.result || output.error)}`);
-}
+const WORKSPACE_ROOT = process.env.AGENT_WORKSPACE_ROOT
+  ? path.resolve(process.env.AGENT_WORKSPACE_ROOT)
+  : path.resolve(process.cwd());
 
-export const readFileTool: Tool = {
-  name: "read_file",
-  description: "Read the contents of a file from the workspace",
-  parameters: [
-    { name: "filepath", type: "string", description: "Path to the file relative to workspace", required: true },
-  ],
-  execute: async (input: ToolInput): Promise<ToolOutput> => {
-    const { filepath } = input;
-    try {
-      const fullPath = path.resolve(WORKSPACE_DIR, filepath);
-      if (!fullPath.startsWith(WORKSPACE_DIR)) {
-        const output = { success: false, result: null, error: "Access denied: Path outside workspace" };
-        logToolExecution("read_file", input, output);
-        return output;
-      }
-      if (!fs.existsSync(fullPath)) {
-        const output = { success: false, result: null, error: `File not found: ${filepath}` };
-        logToolExecution("read_file", input, output);
-        return output;
-      }
-      const content = fs.readFileSync(fullPath, "utf-8");
-      const output = { success: true, result: content };
-      logToolExecution("read_file", input, output);
-      return output;
-    } catch (error: any) {
-      const output = { success: false, result: null, error: error.message };
-      logToolExecution("read_file", input, output);
-      return output;
-    }
-  },
-};
-
-export const writeFileTool: Tool = {
-  name: "write_file",
-  description: "Write content to a file in the workspace",
-  parameters: [
-    { name: "filepath", type: "string", description: "Path to the file relative to workspace", required: true },
-    { name: "content", type: "string", description: "Content to write to the file", required: true },
-  ],
-  execute: async (input: ToolInput): Promise<ToolOutput> => {
-    const { filepath, content } = input;
-    try {
-      const fullPath = path.resolve(WORKSPACE_DIR, filepath);
-      if (!fullPath.startsWith(WORKSPACE_DIR)) {
-        const output = { success: false, result: null, error: "Access denied: Path outside workspace" };
-        logToolExecution("write_file", input, output);
-        return output;
-      }
-      const dir = path.dirname(fullPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(fullPath, content, "utf-8");
-      const output = { success: true, result: `File written successfully: ${filepath}` };
-      logToolExecution("write_file", input, output);
-      return output;
-    } catch (error: any) {
-      const output = { success: false, result: null, error: error.message };
-      logToolExecution("write_file", input, output);
-      return output;
-    }
-  },
-};
-
-export const listFilesTool: Tool = {
-  name: "list_files",
-  description: "List files and directories in a given path",
-  parameters: [
-    { name: "dirpath", type: "string", description: "Directory path relative to workspace (default: root)", required: false },
-    { name: "recursive", type: "boolean", description: "Whether to list recursively", required: false },
-  ],
-  execute: async (input: ToolInput): Promise<ToolOutput> => {
-    const { dirpath = ".", recursive = false } = input;
-    try {
-      const fullPath = path.resolve(WORKSPACE_DIR, dirpath);
-      if (!fullPath.startsWith(WORKSPACE_DIR)) {
-        const output = { success: false, result: null, error: "Access denied: Path outside workspace" };
-        logToolExecution("list_files", input, output);
-        return output;
-      }
-      if (!fs.existsSync(fullPath)) {
-        const output = { success: false, result: null, error: `Directory not found: ${dirpath}` };
-        logToolExecution("list_files", input, output);
-        return output;
-      }
-      
-      const listDir = (dir: string, prefix = ""): string[] => {
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        let files: string[] = [];
-        for (const entry of entries) {
-          if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-          const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-          if (entry.isDirectory()) {
-            files.push(`[DIR] ${relativePath}`);
-            if (recursive) {
-              files = files.concat(listDir(path.join(dir, entry.name), relativePath));
-            }
-          } else {
-            files.push(relativePath);
-          }
-        }
-        return files;
-      };
-      
-      const files = listDir(fullPath);
-      const output = { success: true, result: files };
-      logToolExecution("list_files", input, output);
-      return output;
-    } catch (error: any) {
-      const output = { success: false, result: null, error: error.message };
-      logToolExecution("list_files", input, output);
-      return output;
-    }
-  },
-};
-
-export const fetchUrlTool: Tool = {
-  name: "fetch_url",
-  description: "Fetch content from a URL",
-  parameters: [
-    { name: "url", type: "string", description: "The URL to fetch", required: true },
-    { name: "method", type: "string", description: "HTTP method (GET, POST, etc.)", required: false },
-    { name: "headers", type: "object", description: "Request headers", required: false },
-    { name: "body", type: "string", description: "Request body for POST/PUT", required: false },
-  ],
-  execute: async (input: ToolInput): Promise<ToolOutput> => {
-    const { url, method = "GET", headers = {}, body } = input;
-    try {
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "User-Agent": "AutonomousAgent/1.0",
-          ...headers,
-        },
-        body: body ? body : undefined,
-      });
-      
-      const contentType = response.headers.get("content-type") || "";
-      let result: any;
-      
-      if (contentType.includes("application/json")) {
-        result = await response.json();
-      } else {
-        result = await response.text();
-        if (result.length > 10000) {
-          result = result.substring(0, 10000) + "\n...[truncated]";
-        }
-      }
-      
-      const output = {
-        success: response.ok,
-        result: {
-          status: response.status,
-          statusText: response.statusText,
-          data: result,
-        },
-        error: response.ok ? undefined : `HTTP ${response.status}: ${response.statusText}`,
-      };
-      logToolExecution("fetch_url", { url, method }, output);
-      return output;
-    } catch (error: any) {
-      const output = { success: false, result: null, error: error.message };
-      logToolExecution("fetch_url", input, output);
-      return output;
-    }
-  },
-};
-
-export const toolRegistry: Map<string, Tool> = new Map([
-  ["read_file", readFileTool],
-  ["write_file", writeFileTool],
-  ["list_files", listFilesTool],
-  ["fetch_url", fetchUrlTool],
+const DEFAULT_IGNORES = new Set([
+  "node_modules",
+  ".git",
+  ".next",
+  "dist",
+  "build",
+  ".expo",
+  ".cache",
 ]);
 
-export function getToolDescriptions(): string {
-  const tools = Array.from(toolRegistry.values());
-  return tools.map(tool => {
-    const params = tool.parameters.map(p => 
-      `  - ${p.name} (${p.type}${p.required ? ", required" : ""}): ${p.description}`
-    ).join("\n");
-    return `${tool.name}: ${tool.description}\nParameters:\n${params}`;
-  }).join("\n\n");
+function safeResolve(relOrAbs: string): string {
+  const resolved = path.resolve(WORKSPACE_ROOT, relOrAbs);
+  if (!resolved.startsWith(WORKSPACE_ROOT)) {
+    throw new Error("Path escapes workspace root.");
+  }
+  return resolved;
 }
 
-export async function executeTool(toolName: string, input: ToolInput): Promise<ToolOutput> {
-  const tool = toolRegistry.get(toolName);
-  if (!tool) {
-    return { success: false, result: null, error: `Unknown tool: ${toolName}` };
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.stat(p);
+    return true;
+  } catch {
+    return false;
   }
-  return await tool.execute(input);
+}
+
+export async function executeTool(name: ToolName, rawArgs: unknown): Promise<ToolResult> {
+  try {
+    switch (name) {
+      case "get_file_tree": {
+        const args = parseToolArgs(name, rawArgs);
+        const root = safeResolve(args.root);
+        const tree = await getFileTree(root, args.maxDepth);
+        return { ok: true, data: tree };
+      }
+
+      case "read_file": {
+        const args = parseToolArgs(name, rawArgs);
+        const filePath = safeResolve(args.path);
+
+        const buf = await fs.readFile(filePath);
+        const clipped = buf.subarray(0, args.maxBytes);
+        const text = clipped.toString("utf8");
+
+        if (!args.startLine && !args.endLine) {
+          return { ok: true, data: { path: args.path, content: text, truncated: buf.length > clipped.length } };
+        }
+
+        const lines = text.split(/\r?\n/);
+        const start = Math.max(1, args.startLine ?? 1);
+        const end = Math.min(lines.length, args.endLine ?? lines.length);
+        const slice = lines.slice(start - 1, end).join("\n");
+
+        return {
+          ok: true,
+          data: {
+            path: args.path,
+            startLine: start,
+            endLine: end,
+            content: slice,
+            truncated: buf.length > clipped.length,
+            totalLinesInClip: lines.length,
+          },
+        };
+      }
+
+      case "write_file": {
+        const args = parseToolArgs(name, rawArgs);
+        const filePath = safeResolve(args.path);
+        const dir = path.dirname(filePath);
+
+        if (args.createDirs) await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(filePath, args.content, "utf8");
+
+        return { ok: true, data: { path: args.path, bytes: Buffer.byteLength(args.content, "utf8") } };
+      }
+
+      case "apply_patch": {
+        const args = parseToolArgs(name, rawArgs);
+        const filePath = safeResolve(args.path);
+
+        const exists = await fileExists(filePath);
+        if (!exists) {
+          return { ok: false, error: { code: "NOT_FOUND", message: `File not found: ${args.path}` } };
+        }
+
+        const original = await fs.readFile(filePath, "utf8");
+        const lines = original.split(/\r?\n/);
+
+        // Apply edits from bottom to top to keep line indexes stable.
+        const edits = [...args.edits].sort((a, b) => b.startLine - a.startLine);
+
+        for (const e of edits) {
+          const startIdx = e.startLine - 1;
+          const endIdx = e.endLine - 1;
+          if (startIdx < 0 || endIdx < startIdx || endIdx >= lines.length) {
+            return {
+              ok: false,
+              error: {
+                code: "RANGE_ERROR",
+                message: `Invalid edit range [${e.startLine}, ${e.endLine}] for ${args.path} (lines=${lines.length})`,
+              },
+            };
+          }
+          const newLines = e.newText.split(/\r?\n/);
+          lines.splice(startIdx, endIdx - startIdx + 1, ...newLines);
+        }
+
+        const updated = lines.join("\n");
+        await fs.writeFile(filePath, updated, "utf8");
+
+        return { ok: true, data: { path: args.path, editsApplied: edits.length } };
+      }
+
+      case "search_in_files": {
+        const args = parseToolArgs(name, rawArgs);
+        const compiled = args.regex
+          ? new RegExp(args.query, args.caseSensitive ? "g" : "gi")
+          : null;
+
+        const matches: Array<{
+          path: string;
+          line: number;
+          preview: string;
+        }> = [];
+
+        for (const p of args.paths) {
+          const root = safeResolve(p);
+          const files = await collectTextFiles(root, 6);
+          for (const f of files) {
+            if (matches.length >= args.maxMatches) break;
+            const content = await fs.readFile(f, "utf8").catch(() => "");
+            if (!content) continue;
+
+            const lines = content.split(/\r?\n/);
+            for (let i = 0; i < lines.length; i++) {
+              if (matches.length >= args.maxMatches) break;
+
+              const hay = args.caseSensitive ? lines[i] : lines[i].toLowerCase();
+              const needle = args.caseSensitive ? args.query : args.query.toLowerCase();
+
+              const hit = compiled ? compiled.test(lines[i]) : hay.includes(needle);
+              if (hit) {
+                matches.push({
+                  path: path.relative(WORKSPACE_ROOT, f),
+                  line: i + 1,
+                  preview: lines[i].slice(0, 240),
+                });
+              }
+
+              if (compiled) compiled.lastIndex = 0;
+            }
+          }
+        }
+
+        return { ok: true, data: { query: args.query, matches } };
+      }
+
+      case "fetch_url": {
+        const args = parseToolArgs(name, rawArgs);
+        const res = await fetch(args.url);
+        const text = await res.text();
+        const clipped = text.slice(0, args.maxBytes);
+        return {
+          ok: true,
+          data: {
+            url: args.url,
+            status: res.status,
+            contentType: res.headers.get("content-type"),
+            body: clipped,
+            truncated: text.length > clipped.length,
+          },
+        };
+      }
+
+      case "run_command": {
+        const args = parseToolArgs(name, rawArgs);
+        return await runCommandSandbox(args);
+      }
+
+      default:
+        return { ok: false, error: { code: "UNKNOWN_TOOL", message: `Unknown tool: ${name}` } };
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        code: "TOOL_ERROR",
+        message: err instanceof Error ? err.message : "Unknown error",
+        details: err,
+      },
+    };
+  }
+}
+
+async function getFileTree(rootAbs: string, maxDepth: number) {
+  const out: Array<{ path: string; type: "file" | "dir"; size?: number }> = [];
+
+  async function walk(dir: string, depth: number) {
+    if (depth > maxDepth) return;
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const e of entries) {
+      if (DEFAULT_IGNORES.has(e.name)) continue;
+      const abs = path.join(dir, e.name);
+      const rel = path.relative(WORKSPACE_ROOT, abs);
+
+      if (e.isDirectory()) {
+        out.push({ path: rel, type: "dir" });
+        await walk(abs, depth + 1);
+      } else if (e.isFile()) {
+        const st = await fs.stat(abs).catch(() => null);
+        out.push({ path: rel, type: "file", size: st?.size ?? 0 });
+      }
+    }
+  }
+
+  await walk(rootAbs, 0);
+  return out;
+}
+
+async function collectTextFiles(rootAbs: string, maxDepth: number) {
+  const files: string[] = [];
+
+  async function walk(dir: string, depth: number) {
+    if (depth > maxDepth) return;
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const e of entries) {
+      if (DEFAULT_IGNORES.has(e.name)) continue;
+      const abs = path.join(dir, e.name);
+      if (e.isDirectory()) await walk(abs, depth + 1);
+      else if (e.isFile()) {
+        // quick filter: skip huge/binary-ish files by extension
+        const ext = path.extname(e.name).toLowerCase();
+        const okExt = new Set([
+          ".ts", ".tsx", ".js", ".jsx", ".json", ".md", ".css", ".scss",
+          ".html", ".txt", ".yml", ".yaml", ".env", ".toml",
+        ]);
+        if (!okExt.has(ext) && !e.name.includes(".env")) continue;
+        files.push(abs);
+      }
+    }
+  }
+
+  await walk(rootAbs, 0);
+  return files;
+}
+
+async function runCommandSandbox(args: {
+  cmd: string;
+  args: string[];
+  cwd: string;
+  timeoutMs: number;
+  env: Record<string, string>;
+}): Promise<ToolResult> {
+  const ALLOWLIST = new Set(["npm", "pnpm", "yarn", "node", "npx", "ls", "pwd", "grep"]);
+  if (!ALLOWLIST.has(args.cmd)) {
+    return { ok: false, error: { code: "CMD_NOT_ALLOWED", message: `Command not allowed: ${args.cmd}` } };
+  }
+
+  const cwdAbs = safeResolve(args.cwd);
+
+  return await new Promise<ToolResult>((resolve) => {
+    let stdout = "";
+    let stderr = "";
+
+    const child = spawn(args.cmd, args.args ?? [], {
+      cwd: cwdAbs,
+      shell: false,
+      env: { ...process.env, ...args.env },
+    });
+
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, error: { code: "TIMEOUT", message: `Command timed out after ${args.timeoutMs}ms` } });
+    }, args.timeoutMs);
+
+    child.stdout.on("data", (d) => { stdout += d.toString(); });
+    child.stderr.on("data", (d) => { stderr += d.toString(); });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({
+        ok: true,
+        data: {
+          code,
+          stdout: stdout.slice(0, 50000),
+          stderr: stderr.slice(0, 50000),
+          truncated: stdout.length > 50000 || stderr.length > 50000,
+        },
+      });
+    });
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: { code: "SPAWN_ERROR", message: err.message } });
+    });
+  });
 }

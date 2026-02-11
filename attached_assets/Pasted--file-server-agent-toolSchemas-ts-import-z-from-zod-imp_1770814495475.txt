@@ -1,0 +1,654 @@
+// file: server/agent/toolSchemas.ts
+import { z } from "zod";
+import OpenAI from "openai";
+
+/**
+ * Zod schemas for tool arguments + helpers to build OpenAI tool definitions.
+ * Keep this file dependency-free besides zod + openai types.
+ */
+
+export const ToolName = z.enum([
+  "get_file_tree",
+  "read_file",
+  "write_file",
+  "apply_patch",
+  "search_in_files",
+  "fetch_url",
+  "run_command",
+]);
+
+export type ToolName = z.infer<typeof ToolName>;
+
+export const GetFileTreeArgs = z.object({
+  root: z.string().optional().default("."),
+  maxDepth: z.number().int().min(0).max(20).optional().default(6),
+});
+
+export const ReadFileArgs = z.object({
+  path: z.string().min(1),
+  startLine: z.number().int().min(1).optional(),
+  endLine: z.number().int().min(1).optional(),
+  maxBytes: z.number().int().min(1024).max(2_000_000).optional().default(250_000),
+});
+
+export const WriteFileArgs = z.object({
+  path: z.string().min(1),
+  content: z.string(),
+  createDirs: z.boolean().optional().default(true),
+});
+
+export const ApplyPatchArgs = z.object({
+  path: z.string().min(1),
+  edits: z
+    .array(
+      z.object({
+        startLine: z.number().int().min(1),
+        endLine: z.number().int().min(1),
+        newText: z.string(),
+      })
+    )
+    .min(1),
+});
+
+export const SearchInFilesArgs = z.object({
+  query: z.string().min(1),
+  paths: z.array(z.string().min(1)).optional().default(["."]),
+  regex: z.boolean().optional().default(false),
+  caseSensitive: z.boolean().optional().default(false),
+  maxMatches: z.number().int().min(1).max(2000).optional().default(200),
+});
+
+export const FetchUrlArgs = z.object({
+  url: z.string().url(),
+  maxBytes: z.number().int().min(1024).max(2_000_000).optional().default(250_000),
+});
+
+export const RunCommandArgs = z.object({
+  cmd: z.string().min(1),
+  args: z.array(z.string()).optional().default([]),
+  cwd: z.string().optional().default("."),
+  timeoutMs: z.number().int().min(500).max(120_000).optional().default(30_000),
+  env: z.record(z.string()).optional().default({}),
+});
+
+export const ToolArgSchemas = {
+  get_file_tree: GetFileTreeArgs,
+  read_file: ReadFileArgs,
+  write_file: WriteFileArgs,
+  apply_patch: ApplyPatchArgs,
+  search_in_files: SearchInFilesArgs,
+  fetch_url: FetchUrlArgs,
+  run_command: RunCommandArgs,
+} as const;
+
+export type ToolArgs<TName extends ToolName> = z.infer<(typeof ToolArgSchemas)[TName]>;
+
+export function parseToolArgs<TName extends ToolName>(name: TName, raw: unknown): ToolArgs<TName> {
+  return ToolArgSchemas[name].parse(raw) as ToolArgs<TName>;
+}
+
+/**
+ * OpenAI tool definitions (function calling)
+ * Keep descriptions crisp + operational.
+ */
+export function buildOpenAITools(): OpenAI.Chat.Completions.ChatCompletionTool[] {
+  const t = (name: ToolName, description: string, schema: z.ZodTypeAny) => ({
+    type: "function" as const,
+    function: {
+      name,
+      description,
+      parameters: schema.toJSONSchema?.() ?? zodToJsonSchemaFallback(schema),
+    },
+  });
+
+  return [
+    t("get_file_tree", "List project files under a root folder.", GetFileTreeArgs),
+    t("read_file", "Read a file (optionally line-ranged).", ReadFileArgs),
+    t("write_file", "Write a file. Creates parent dirs when needed.", WriteFileArgs),
+    t("apply_patch", "Apply line-based edits to a file.", ApplyPatchArgs),
+    t("search_in_files", "Search text across files and return matches.", SearchInFilesArgs),
+    t("fetch_url", "Fetch a URL and return the response text.", FetchUrlArgs),
+    t("run_command", "Run a sandboxed command (no shell). Use for build/test/dev.", RunCommandArgs),
+  ];
+}
+
+/**
+ * Fallback JSON schema emitter.
+ * Why: zod's toJSONSchema is available in newer versions; this prevents crashes.
+ */
+function zodToJsonSchemaFallback(_schema: z.ZodTypeAny): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: {},
+    additionalProperties: true,
+  };
+}
+
+
+// file: server/agent/tools.ts
+import fs from "node:fs/promises";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { ToolName, parseToolArgs } from "./toolSchemas";
+
+export type ToolResult =
+  | { ok: true; data: unknown }
+  | { ok: false; error: { code: string; message: string; details?: unknown } };
+
+const WORKSPACE_ROOT = process.env.AGENT_WORKSPACE_ROOT
+  ? path.resolve(process.env.AGENT_WORKSPACE_ROOT)
+  : path.resolve(process.cwd());
+
+const DEFAULT_IGNORES = new Set([
+  "node_modules",
+  ".git",
+  ".next",
+  "dist",
+  "build",
+  ".expo",
+  ".cache",
+]);
+
+function safeResolve(relOrAbs: string): string {
+  const resolved = path.resolve(WORKSPACE_ROOT, relOrAbs);
+  if (!resolved.startsWith(WORKSPACE_ROOT)) {
+    throw new Error("Path escapes workspace root.");
+  }
+  return resolved;
+}
+
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function executeTool(name: ToolName, rawArgs: unknown): Promise<ToolResult> {
+  try {
+    switch (name) {
+      case "get_file_tree": {
+        const args = parseToolArgs(name, rawArgs);
+        const root = safeResolve(args.root);
+        const tree = await getFileTree(root, args.maxDepth);
+        return { ok: true, data: tree };
+      }
+
+      case "read_file": {
+        const args = parseToolArgs(name, rawArgs);
+        const filePath = safeResolve(args.path);
+
+        const buf = await fs.readFile(filePath);
+        const clipped = buf.subarray(0, args.maxBytes);
+        const text = clipped.toString("utf8");
+
+        if (!args.startLine && !args.endLine) {
+          return { ok: true, data: { path: args.path, content: text, truncated: buf.length > clipped.length } };
+        }
+
+        const lines = text.split(/\r?\n/);
+        const start = Math.max(1, args.startLine ?? 1);
+        const end = Math.min(lines.length, args.endLine ?? lines.length);
+        const slice = lines.slice(start - 1, end).join("\n");
+
+        return {
+          ok: true,
+          data: {
+            path: args.path,
+            startLine: start,
+            endLine: end,
+            content: slice,
+            truncated: buf.length > clipped.length,
+            totalLinesInClip: lines.length,
+          },
+        };
+      }
+
+      case "write_file": {
+        const args = parseToolArgs(name, rawArgs);
+        const filePath = safeResolve(args.path);
+        const dir = path.dirname(filePath);
+
+        if (args.createDirs) await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(filePath, args.content, "utf8");
+
+        return { ok: true, data: { path: args.path, bytes: Buffer.byteLength(args.content, "utf8") } };
+      }
+
+      case "apply_patch": {
+        const args = parseToolArgs(name, rawArgs);
+        const filePath = safeResolve(args.path);
+
+        const exists = await fileExists(filePath);
+        if (!exists) {
+          return { ok: false, error: { code: "NOT_FOUND", message: `File not found: ${args.path}` } };
+        }
+
+        const original = await fs.readFile(filePath, "utf8");
+        const lines = original.split(/\r?\n/);
+
+        // Apply edits from bottom to top to keep line indexes stable.
+        const edits = [...args.edits].sort((a, b) => b.startLine - a.startLine);
+
+        for (const e of edits) {
+          const startIdx = e.startLine - 1;
+          const endIdx = e.endLine - 1;
+          if (startIdx < 0 || endIdx < startIdx || endIdx >= lines.length) {
+            return {
+              ok: false,
+              error: {
+                code: "RANGE_ERROR",
+                message: `Invalid edit range [${e.startLine}, ${e.endLine}] for ${args.path} (lines=${lines.length})`,
+              },
+            };
+          }
+          const newLines = e.newText.split(/\r?\n/);
+          lines.splice(startIdx, endIdx - startIdx + 1, ...newLines);
+        }
+
+        const updated = lines.join("\n");
+        await fs.writeFile(filePath, updated, "utf8");
+
+        return { ok: true, data: { path: args.path, editsApplied: edits.length } };
+      }
+
+      case "search_in_files": {
+        const args = parseToolArgs(name, rawArgs);
+        const compiled = args.regex
+          ? new RegExp(args.query, args.caseSensitive ? "g" : "gi")
+          : null;
+
+        const matches: Array<{
+          path: string;
+          line: number;
+          preview: string;
+        }> = [];
+
+        for (const p of args.paths) {
+          const root = safeResolve(p);
+          const files = await collectTextFiles(root, 6);
+          for (const f of files) {
+            if (matches.length >= args.maxMatches) break;
+            const content = await fs.readFile(f, "utf8").catch(() => "");
+            if (!content) continue;
+
+            const lines = content.split(/\r?\n/);
+            for (let i = 0; i < lines.length; i++) {
+              if (matches.length >= args.maxMatches) break;
+
+              const hay = args.caseSensitive ? lines[i] : lines[i].toLowerCase();
+              const needle = args.caseSensitive ? args.query : args.query.toLowerCase();
+
+              const hit = compiled ? compiled.test(lines[i]) : hay.includes(needle);
+              if (hit) {
+                matches.push({
+                  path: path.relative(WORKSPACE_ROOT, f),
+                  line: i + 1,
+                  preview: lines[i].slice(0, 240),
+                });
+              }
+
+              if (compiled) compiled.lastIndex = 0;
+            }
+          }
+        }
+
+        return { ok: true, data: { query: args.query, matches } };
+      }
+
+      case "fetch_url": {
+        const args = parseToolArgs(name, rawArgs);
+        const res = await fetch(args.url);
+        const text = await res.text();
+        const clipped = text.slice(0, args.maxBytes);
+        return {
+          ok: true,
+          data: {
+            url: args.url,
+            status: res.status,
+            contentType: res.headers.get("content-type"),
+            body: clipped,
+            truncated: text.length > clipped.length,
+          },
+        };
+      }
+
+      case "run_command": {
+        const args = parseToolArgs(name, rawArgs);
+        return await runCommandSandbox(args);
+      }
+
+      default:
+        return { ok: false, error: { code: "UNKNOWN_TOOL", message: `Unknown tool: ${name}` } };
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        code: "TOOL_ERROR",
+        message: err instanceof Error ? err.message : "Unknown error",
+        details: err,
+      },
+    };
+  }
+}
+
+async function getFileTree(rootAbs: string, maxDepth: number) {
+  const out: Array<{ path: string; type: "file" | "dir"; size?: number }> = [];
+
+  async function walk(dir: string, depth: number) {
+    if (depth > maxDepth) return;
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const e of entries) {
+      if (DEFAULT_IGNORES.has(e.name)) continue;
+      const abs = path.join(dir, e.name);
+      const rel = path.relative(WORKSPACE_ROOT, abs);
+
+      if (e.isDirectory()) {
+        out.push({ path: rel, type: "dir" });
+        await walk(abs, depth + 1);
+      } else if (e.isFile()) {
+        const st = await fs.stat(abs).catch(() => null);
+        out.push({ path: rel, type: "file", size: st?.size ?? 0 });
+      }
+    }
+  }
+
+  await walk(rootAbs, 0);
+  return out;
+}
+
+async function collectTextFiles(rootAbs: string, maxDepth: number) {
+  const files: string[] = [];
+
+  async function walk(dir: string, depth: number) {
+    if (depth > maxDepth) return;
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const e of entries) {
+      if (DEFAULT_IGNORES.has(e.name)) continue;
+      const abs = path.join(dir, e.name);
+      if (e.isDirectory()) await walk(abs, depth + 1);
+      else if (e.isFile()) {
+        // quick filter: skip huge/binary-ish files by extension
+        const ext = path.extname(e.name).toLowerCase();
+        const okExt = new Set([
+          ".ts", ".tsx", ".js", ".jsx", ".json", ".md", ".css", ".scss",
+          ".html", ".txt", ".yml", ".yaml", ".env", ".toml",
+        ]);
+        if (!okExt.has(ext) && !e.name.includes(".env")) continue;
+        files.push(abs);
+      }
+    }
+  }
+
+  await walk(rootAbs, 0);
+  return files;
+}
+
+async function runCommandSandbox(args: {
+  cmd: string;
+  args: string[];
+  cwd: string;
+  timeoutMs: number;
+  env: Record<string, string>;
+}): Promise<ToolResult> {
+  const ALLOWLIST = new Set(["npm", "pnpm", "yarn", "node", "npx"]); // add "git" only if you want it
+  if (!ALLOWLIST.has(args.cmd)) {
+    return { ok: false, error: { code: "CMD_NOT_ALLOWED", message: `Command not allowed: ${args.cmd}` } };
+  }
+
+  const cwdAbs = safeResolve(args.cwd);
+
+  return await new Promise<ToolResult>((resolve) => {
+    const child = spawn(args.cmd, args.args ?? [], {
+      cwd: cwdAbs,
+      shell: false,
+      windowsHide: true,
+      env: {
+        ...process.env,
+        ...args.env,
+        // Clamp risky env variables if you want (optional):
+        // NODE_OPTIONS: "",
+      },
+    });
+
+    let stdout = "";
+    let stderr = "";
+    const MAX_OUT = 300_000;
+
+    const killTimer = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve({
+        ok: false,
+        error: { code: "TIMEOUT", message: `Command timed out after ${args.timeoutMs}ms` },
+      });
+    }, args.timeoutMs);
+
+    child.stdout.on("data", (d) => {
+      stdout += d.toString();
+      if (stdout.length > MAX_OUT) stdout = stdout.slice(-MAX_OUT);
+    });
+    child.stderr.on("data", (d) => {
+      stderr += d.toString();
+      if (stderr.length > MAX_OUT) stderr = stderr.slice(-MAX_OUT);
+    });
+
+    child.on("error", (e) => {
+      clearTimeout(killTimer);
+      resolve({ ok: false, error: { code: "SPAWN_ERROR", message: e.message } });
+    });
+
+    child.on("close", (code, signal) => {
+      clearTimeout(killTimer);
+      resolve({
+        ok: true,
+        data: {
+          cmd: args.cmd,
+          args: args.args,
+          cwd: args.cwd,
+          exitCode: code,
+          signal,
+          stdout,
+          stderr,
+        },
+      });
+    });
+  });
+}
+
+
+// file: server/agent/engine.ts
+import OpenAI from "openai";
+import { AgentState, Task, AgentConfig } from "./types";
+import { executeTool } from "./tools";
+import { buildOpenAITools } from "./toolSchemas";
+import { addMemoryEntry, addGoal, updateGoalStatus, formatMemoryForPrompt } from "./memory";
+
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
+
+const DEFAULT_CONFIG: AgentConfig = {
+  maxSteps: 50,
+  maxRetries: 3,
+  autonomousMode: false,
+  reflectionEnabled: true,
+};
+
+function generateId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+async function callLLMWithTools(opts: {
+  messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+  tools: OpenAI.Chat.Completions.ChatCompletionTool[];
+  model?: string;
+}) {
+  const model = opts.model ?? (process.env.AI_INTEGRATIONS_OPENAI_MODEL || "gpt-4.1-mini");
+  return await openai.chat.completions.create({
+    model,
+    messages: opts.messages,
+    tools: opts.tools,
+    tool_choice: "auto",
+  });
+}
+
+/**
+ * Core loop: assistant may call tools multiple times before finalizing.
+ */
+async function runToolLoop(params: {
+  state: AgentState;
+  task: Task;
+  maxSteps: number;
+}): Promise<{ finalText: string; toolCalls: number }> {
+  const tools = buildOpenAITools();
+
+  const memory = formatMemoryForPrompt(params.state.id);
+  const system = `You are an autonomous web-dev execution agent.
+Use tools for file/tree/search/build/test. Prefer apply_patch over rewrite.
+When you run commands, prefer: npm test, npm run build, npm run lint.
+Always verify changes (build/test) when relevant.`;
+
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: "system", content: system },
+    {
+      role: "user",
+      content: [
+        `Goal: ${params.state.goal}`,
+        `Task: ${params.task.description}`,
+        `Memory:\n${memory}`,
+      ].join("\n\n"),
+    },
+  ];
+
+  let toolCalls = 0;
+
+  for (let step = 0; step < params.maxSteps; step++) {
+    const resp = await callLLMWithTools({ messages, tools });
+    const msg = resp.choices[0]?.message;
+
+    if (!msg) return { finalText: "No response from model.", toolCalls };
+
+    // If model produced tool calls, execute them and append tool results.
+    const calls = msg.tool_calls ?? [];
+    if (calls.length > 0) {
+      messages.push(msg);
+
+      for (const c of calls) {
+        toolCalls++;
+        const name = c.function.name as any;
+        let args: unknown;
+
+        try {
+          args = JSON.parse(c.function.arguments || "{}");
+        } catch {
+          args = c.function.arguments;
+        }
+
+        const result = await executeTool(name, args);
+
+        messages.push({
+          role: "tool",
+          tool_call_id: c.id,
+          content: JSON.stringify(result),
+        });
+      }
+
+      continue;
+    }
+
+    // Otherwise, it's a final answer for this task.
+    const finalText = (msg.content ?? "").toString().trim();
+    return { finalText: finalText || "Task completed.", toolCalls };
+  }
+
+  return { finalText: "Stopped: tool loop hit max steps.", toolCalls };
+}
+
+export async function runAgent(goal: string, config?: Partial<AgentConfig>) {
+  const id = generateId();
+  const cfg = { ...DEFAULT_CONFIG, ...(config ?? {}) };
+
+  const state: AgentState = {
+    id,
+    goal,
+    tasks: [],
+    currentTaskIndex: 0,
+    completed: false,
+    logs: [],
+    createdAt: new Date().toISOString(),
+  };
+
+  addGoal(id, goal);
+
+  // --- Planning (keep your existing planner if you like; this is minimal) ---
+  // If you already have a better planner in your current engine.ts, keep it.
+  state.tasks = [
+    { id: generateId(), description: "Inspect project structure and existing pages/components." },
+    { id: generateId(), description: "Implement requested webpage changes with minimal diffs." },
+    { id: generateId(), description: "Run build/tests and fix issues." },
+  ];
+
+  // --- Execution ---
+  for (let i = 0; i < state.tasks.length; i++) {
+    state.currentTaskIndex = i;
+    const task = state.tasks[i];
+
+    const { finalText, toolCalls } = await runToolLoop({
+      state,
+      task,
+      maxSteps: Math.min(20, cfg.maxSteps),
+    });
+
+    state.logs.push({
+      timestamp: new Date().toISOString(),
+      type: "task_result",
+      message: `Task: ${task.description}\nTools: ${toolCalls}\n${finalText}`,
+    });
+
+    addMemoryEntry(id, {
+      timestamp: new Date().toISOString(),
+      type: "task_result",
+      content: finalText,
+      metadata: { task: task.description, toolCalls },
+    });
+  }
+
+  state.completed = true;
+  updateGoalStatus(id, "completed");
+
+  return state;
+}
+
+
+// file: server/agent/types.ts
+export interface Task {
+  id: string;
+  description: string;
+}
+
+export interface AgentLogEntry {
+  timestamp: string;
+  type: string;
+  message: string;
+}
+
+export interface AgentState {
+  id: string;
+  goal: string;
+  tasks: Task[];
+  currentTaskIndex: number;
+  completed: boolean;
+  logs: AgentLogEntry[];
+  createdAt: string;
+}
+
+export interface AgentConfig {
+  maxSteps: number;
+  maxRetries: number;
+  autonomousMode: boolean;
+  reflectionEnabled: boolean;
+}
