@@ -1,0 +1,424 @@
+<!-- file: index.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Autonomous Web Dev Agent</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #101a33;
+        --panel2: #0e1730;
+        --text: #e8eefc;
+        --muted: #a9b7de;
+        --border: rgba(255,255,255,.08);
+        --accent: #6aa6ff;
+        --good: #22c55e;
+        --warn: #f59e0b;
+        --bad: #ef4444;
+        --shadow: 0 10px 30px rgba(0,0,0,.35);
+        --radius: 14px;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 800px at 20% 10%, rgba(106,166,255,.18), transparent 60%),
+                    radial-gradient(900px 700px at 80% 30%, rgba(34,197,94,.10), transparent 55%),
+                    var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+      }
+
+      .app {
+        height: 100%;
+        display: grid;
+        grid-template-columns: 280px 1fr 420px;
+        gap: 14px;
+        padding: 14px;
+      }
+
+      .panel {
+        background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        min-height: 0;
+      }
+
+      /* Sidebar */
+      .sidebar { display: grid; grid-template-rows: auto auto 1fr auto; }
+      .brand {
+        padding: 14px 14px 10px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(0,0,0,.12);
+      }
+      .brand h1 { margin: 0; font-size: 14px; letter-spacing: .4px; }
+      .brand p { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+
+      .sidebar .search { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+      .input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(0,0,0,.18);
+        color: var(--text);
+        outline: none;
+      }
+
+      .runs { padding: 10px; overflow: auto; }
+      .run {
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(0,0,0,.10);
+        margin-bottom: 10px;
+        cursor: pointer;
+      }
+      .run:hover { border-color: rgba(106,166,255,.45); }
+      .run .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .badge {
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+      }
+      .badge.good { color: var(--good); border-color: rgba(34,197,94,.35); }
+      .badge.warn { color: var(--warn); border-color: rgba(245,158,11,.35); }
+      .badge.bad  { color: var(--bad);  border-color: rgba(239,68,68,.35); }
+      .run .title { font-size: 12px; color: var(--text); margin: 8px 0 0; }
+      .run .meta { font-size: 11px; color: var(--muted); margin: 6px 0 0; }
+
+      .sidebar .footer {
+        padding: 12px 14px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        gap: 10px;
+      }
+      .btn {
+        flex: 1;
+        border: 1px solid var(--border);
+        background: rgba(106,166,255,.12);
+        color: var(--text);
+        padding: 10px 12px;
+        border-radius: 12px;
+        cursor: pointer;
+      }
+      .btn:hover { border-color: rgba(106,166,255,.6); }
+
+      /* Center: Chat */
+      .center { display: grid; grid-template-rows: auto 1fr auto; }
+      .center .header {
+        padding: 14px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: rgba(0,0,0,.12);
+      }
+      .statusline { display: flex; align-items: center; gap: 10px; }
+      .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(106,166,255,.12); }
+      .statusline .big { font-size: 13px; }
+      .statusline .small { font-size: 11px; color: var(--muted); }
+
+      .chat {
+        padding: 14px;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .msg {
+        max-width: 92%;
+        padding: 12px 12px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: rgba(0,0,0,.12);
+      }
+      .msg.user { align-self: flex-end; background: rgba(106,166,255,.14); }
+      .msg .role { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+      .msg pre {
+        margin: 10px 0 0;
+        padding: 10px;
+        border-radius: 12px;
+        background: rgba(0,0,0,.20);
+        border: 1px solid var(--border);
+        overflow: auto;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: #dbe7ff;
+      }
+
+      .composer {
+        padding: 12px 14px;
+        border-top: 1px solid var(--border);
+        display: grid;
+        grid-template-columns: 1fr 110px;
+        gap: 10px;
+        background: rgba(0,0,0,.12);
+      }
+
+      /* Right: Panels */
+      .right { display: grid; grid-template-rows: 1fr 1fr; gap: 14px; min-height: 0; }
+      .tabs {
+        display: flex;
+        gap: 8px;
+        padding: 10px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(0,0,0,.12);
+      }
+      .tab {
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(0,0,0,.10);
+        font-size: 12px;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .tab.active { color: var(--text); border-color: rgba(106,166,255,.55); background: rgba(106,166,255,.14); }
+
+      .pane { height: 100%; display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+      .pane .content { padding: 12px; overflow: auto; }
+      .list { display: flex; flex-direction: column; gap: 10px; }
+      .item {
+        border: 1px solid var(--border);
+        background: rgba(0,0,0,.10);
+        border-radius: 12px;
+        padding: 10px 10px;
+      }
+      .item .k { font-size: 11px; color: var(--muted); }
+      .item .v { margin-top: 6px; font-size: 12px; }
+      .item code { font-family: var(--mono); }
+
+      .split {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-height: 0;
+      }
+      .preview {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #fff;
+      }
+
+      @media (max-width: 1100px) {
+        .app { grid-template-columns: 280px 1fr; grid-template-rows: 1fr 1fr; }
+        .right { grid-column: 1 / -1; grid-template-rows: 1fr; }
+      }
+      @media (max-width: 720px) {
+        .app { grid-template-columns: 1fr; grid-template-rows: 260px 1fr 1fr; }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="app">
+      <!-- Sidebar -->
+      <aside class="panel sidebar">
+        <div class="brand">
+          <h1>Autonomous Web Dev Agent</h1>
+          <p>Plan → Edit → Preview → Test → Ship</p>
+        </div>
+
+        <div class="search">
+          <input class="input" placeholder="Search runs, goals, files…" />
+        </div>
+
+        <div class="runs" id="runs"></div>
+
+        <div class="footer">
+          <button class="btn" id="newRun">New Run</button>
+          <button class="btn" id="resume">Resume</button>
+        </div>
+      </aside>
+
+      <!-- Center (Chat) -->
+      <main class="panel center">
+        <div class="header">
+          <div class="statusline">
+            <div class="dot"></div>
+            <div>
+              <div class="big" id="statusTitle">Ready</div>
+              <div class="small" id="statusSub">Waiting for a goal…</div>
+            </div>
+          </div>
+          <div class="badge warn" id="stepBadge">step 0/—</div>
+        </div>
+
+        <div class="chat" id="chat"></div>
+
+        <div class="composer">
+          <input class="input" id="goal" placeholder="Describe the website you want (e.g., landing page + pricing + contact form)…" />
+          <button class="btn" id="send">Run</button>
+        </div>
+      </main>
+
+      <!-- Right Panels -->
+      <section class="right">
+        <div class="panel pane">
+          <div class="tabs">
+            <div class="tab active" data-tab="tasks">Tasks</div>
+            <div class="tab" data-tab="logs">Logs</div>
+            <div class="tab" data-tab="files">Files</div>
+          </div>
+          <div class="content" id="panelTop"></div>
+        </div>
+
+        <div class="panel split">
+          <div class="tabs">
+            <div class="tab active" data-tab="preview">Preview</div>
+            <div class="tab" data-tab="diff">Diff</div>
+            <div class="tab" data-tab="tests">Tests</div>
+          </div>
+          <div style="height:100%; min-height:0;">
+            <iframe class="preview" id="preview" title="Preview"></iframe>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      // Demo-only data. Replace with SSE feed from /agent/stream/:id.
+      const demo = {
+        runs: [
+          { id: "a1", status: "complete", title: "Build a portfolio landing page", meta: "Feb 10 • 12 tasks" },
+          { id: "b2", status: "running", title: "Add pricing + Stripe checkout", meta: "Feb 11 • 7 tasks" },
+          { id: "c3", status: "failed", title: "Fix build errors + deploy", meta: "Feb 11 • 4 tasks" },
+        ],
+        tasks: [
+          { s: "done", t: "Analyze requirements and site structure" },
+          { s: "done", t: "Generate layout + theme tokens" },
+          { s: "running", t: "Implement hero, features, CTA sections" },
+          { s: "pending", t: "Add responsive nav + footer" },
+          { s: "pending", t: "Run build + fix issues" },
+        ],
+        logs: [
+          { k: "tool", v: "write_file → client/pages/Home.tsx" },
+          { k: "tool", v: "write_file → client/styles/theme.ts" },
+          { k: "note", v: "Preview updated: /preview" },
+        ],
+        files: [
+          { k: "client/pages/Home.tsx", v: "modified" },
+          { k: "client/components/Navbar.tsx", v: "added" },
+          { k: "server/routes.ts", v: "unchanged" },
+        ],
+      };
+
+      const runsEl = document.getElementById("runs");
+      const chatEl = document.getElementById("chat");
+      const panelTop = document.getElementById("panelTop");
+      const previewEl = document.getElementById("preview");
+      const statusTitle = document.getElementById("statusTitle");
+      const statusSub = document.getElementById("statusSub");
+      const stepBadge = document.getElementById("stepBadge");
+
+      function badgeClass(status) {
+        if (status === "complete") return "badge good";
+        if (status === "failed") return "badge bad";
+        return "badge warn";
+      }
+
+      function renderRuns() {
+        runsEl.innerHTML = demo.runs.map(r => `
+          <div class="run" data-id="${r.id}">
+            <div class="top">
+              <span class="${badgeClass(r.status)}">${r.status}</span>
+              <span class="badge">run ${r.id}</span>
+            </div>
+            <div class="title">${r.title}</div>
+            <div class="meta">${r.meta}</div>
+          </div>
+        `).join("");
+      }
+
+      function renderPanel(mode) {
+        if (mode === "tasks") {
+          panelTop.innerHTML = `
+            <div class="list">
+              ${demo.tasks.map(x => `
+                <div class="item">
+                  <div class="k">${x.s}</div>
+                  <div class="v">${x.t}</div>
+                </div>
+              `).join("")}
+            </div>
+          `;
+        } else if (mode === "logs") {
+          panelTop.innerHTML = `
+            <div class="list">
+              ${demo.logs.map(x => `
+                <div class="item">
+                  <div class="k">${x.k}</div>
+                  <div class="v"><code>${x.v}</code></div>
+                </div>
+              `).join("")}
+            </div>
+          `;
+        } else if (mode === "files") {
+          panelTop.innerHTML = `
+            <div class="list">
+              ${demo.files.map(x => `
+                <div class="item">
+                  <div class="k">${x.v}</div>
+                  <div class="v"><code>${x.k}</code></div>
+                </div>
+              `).join("")}
+            </div>
+          `;
+        }
+      }
+
+      function addMsg(role, text, code) {
+        const el = document.createElement("div");
+        el.className = `msg ${role}`;
+        el.innerHTML = `
+          <div class="role">${role}</div>
+          <div class="text">${text}</div>
+          ${code ? `<pre>${code}</pre>` : ""}
+        `;
+        chatEl.appendChild(el);
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
+
+      // Initialize
+      renderRuns();
+      renderPanel("tasks");
+      addMsg("assistant", "Hello! I'm your autonomous developer. What would you like to build today?");
+
+      // Event Listeners
+      document.querySelectorAll('.tab').forEach(t => {
+        t.addEventListener('click', () => {
+          const mode = t.dataset.tab;
+          const parent = t.parentElement;
+          parent.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+          t.classList.add('active');
+          if (["tasks", "logs", "files"].includes(mode)) renderPanel(mode);
+        });
+      });
+
+      document.getElementById("send").addEventListener("click", () => {
+        const goal = document.getElementById("goal").value;
+        if (!goal) return;
+        addMsg("user", goal);
+        document.getElementById("goal").value = "";
+        
+        // Simulating agent response
+        setTimeout(() => {
+          statusTitle.innerText = "Researching";
+          statusSub.innerText = "Analyzing requirements...";
+          stepBadge.innerText = "step 1/12";
+          addMsg("assistant", "I've analyzed your request. Here is the plan:", "1. Create theme tokens\n2. Build responsive layout\n3. Implement hero section\n4. Add pricing table");
+        }, 800);
+      });
+    </script>
+  </body>
+</html>
