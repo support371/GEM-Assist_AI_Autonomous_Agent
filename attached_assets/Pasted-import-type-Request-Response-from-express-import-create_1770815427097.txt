@@ -1,0 +1,63 @@
+import type { Request, Response } from "express";
+import { createRedis, redisKeyAgentState, redisChannelAgentEvents } from "./agent/redis";
+import { sseWrite, type AgentEvent } from "./agent/events";
+import { enqueueAgentRun } from "./agent/queue";
+
+// inside registerRoutes(app) or similar:
+const redis = createRedis();
+const redisSub = createRedis();
+
+// POST /api/agent -> enqueue
+app.post("/api/agent", async (req: Request, res: Response) => {
+  const { goal, autonomous = false, maxSteps = 50 } = req.body;
+  if (!goal) return res.status(400).json({ error: "Goal required" });
+
+  const agentId = await enqueueAgentRun({
+    goal,
+    config: { autonomousMode: autonomous, maxSteps },
+  });
+
+  res.json({ agentId, status: "queued" });
+});
+
+// GET /api/agent/stream/:id -> SSE from Redis pub/sub
+app.get("/api/agent/stream/:id", async (req: Request, res: Response) => {
+  const { id: agentId } = req.params;
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  // send cached state immediately (if exists)
+  const last = await redis.get(redisKeyAgentState(agentId));
+  if (last) {
+    const evt: AgentEvent = { type: "state", agentId, state: JSON.parse(last) };
+    sseWrite(res, evt);
+  } else {
+    sseWrite(res, { type: "log", agentId, level: "info", message: "No cached state yet (queued or new run)." });
+  }
+
+  const channel = redisChannelAgentEvents(agentId);
+  await redisSub.subscribe(channel);
+
+  const onMsg = (ch: string, msg: string) => {
+    if (ch !== channel) return;
+    try {
+      const evt = JSON.parse(msg) as AgentEvent;
+      sseWrite(res, evt);
+    } catch {
+      sseWrite(res, { type: "log", agentId, level: "warn", message: "Bad event JSON received." });
+    }
+  };
+
+  redisSub.on("message", onMsg);
+
+  req.on("close", async () => {
+    redisSub.off("message", onMsg);
+    try {
+      await redisSub.unsubscribe(channel);
+    } catch {}
+    res.end();
+  });
+});
