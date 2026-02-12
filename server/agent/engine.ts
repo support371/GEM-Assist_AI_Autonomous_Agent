@@ -1,7 +1,19 @@
 import OpenAI from "openai";
-import { AgentState, Task, ReflectionResult, AgentLogEntry, AgentConfig } from "./types";
+import {
+  AgentState,
+  Task,
+  ReflectionResult,
+  AgentLogEntry,
+  AgentConfig,
+} from "./types";
 import { getToolDescriptions, executeTool, toolRegistry } from "./tools";
-import { addMemoryEntry, addGoal, updateGoalStatus, formatMemoryForPrompt, getUnfinishedGoals } from "./memory";
+import {
+  addMemoryEntry,
+  addGoal,
+  updateGoalStatus,
+  formatMemoryForPrompt,
+  getUnfinishedGoals,
+} from "./memory";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -19,7 +31,12 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
-function log(state: AgentState, type: AgentLogEntry["type"], message: string, data?: any): void {
+function log(
+  state: AgentState,
+  type: AgentLogEntry["type"],
+  message: string,
+  data?: any,
+): void {
   state.log.push({
     timestamp: new Date().toISOString(),
     type,
@@ -61,7 +78,7 @@ Return ONLY a numbered list of tasks, one per line.
 Goal: ${goal}`;
 
   const plan = await callLLM(prompt);
-  
+
   return plan
     .split("\n")
     .filter((l) => l.match(/^\d+/))
@@ -72,10 +89,13 @@ Goal: ${goal}`;
     }));
 }
 
-async function executeTaskWithTools(task: Task, state: AgentState): Promise<string> {
+async function executeTaskWithTools(
+  task: Task,
+  state: AgentState,
+): Promise<string> {
   const toolDescriptions = getToolDescriptions();
   const memory = formatMemoryForPrompt(state.id);
-  
+
   const prompt = `You are an execution agent with access to these tools:
 
 ${toolDescriptions}
@@ -95,9 +115,9 @@ If no tool is needed, just provide your response directly.
 Execute the task and provide the result.`;
 
   const response = await callLLM(prompt);
-  
+
   const toolMatch = response.match(/TOOL:\s*(\w+)\s*\nPARAMS:\s*(\{[^}]+\})/);
-  
+
   if (toolMatch) {
     const toolName = toolMatch[1];
     let params = {};
@@ -106,21 +126,30 @@ Execute the task and provide the result.`;
     } catch (e) {
       return `Error parsing tool parameters: ${e}`;
     }
-    
+
     log(state, "tool", `Using tool: ${toolName}`, params);
     const result = await executeTool(toolName, params);
-    
-    addMemoryEntry("result", `Tool ${toolName}: ${result.success ? "Success" : "Failed"} - ${JSON.stringify(result.result || result.error)}`, task.description, state.id);
-    
-    return result.success 
+
+    addMemoryEntry(
+      "result",
+      `Tool ${toolName}: ${result.success ? "Success" : "Failed"} - ${JSON.stringify(result.result || result.error)}`,
+      task.description,
+      state.id,
+    );
+
+    return result.success
       ? `Tool ${toolName} succeeded: ${JSON.stringify(result.result)}`
       : `Tool ${toolName} failed: ${result.error}`;
   }
-  
+
   return response;
 }
 
-async function reflectOnTask(task: Task, result: string, state: AgentState): Promise<ReflectionResult> {
+async function reflectOnTask(
+  task: Task,
+  result: string,
+  state: AgentState,
+): Promise<ReflectionResult> {
   const prompt = `You are a self-reflection agent. Analyze the following task execution:
 
 Goal: ${state.goal}
@@ -144,18 +173,23 @@ Respond in this exact JSON format:
 }`;
 
   const response = await callLLM(prompt);
-  
+
   try {
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const reflection = JSON.parse(jsonMatch[0]);
-      addMemoryEntry("decision", `Task "${task.description}": ${reflection.success ? "Success" : "Failed"} (confidence: ${reflection.confidence}%)`, reflection.analysis, state.id);
+      addMemoryEntry(
+        "decision",
+        `Task "${task.description}": ${reflection.success ? "Success" : "Failed"} (confidence: ${reflection.confidence}%)`,
+        reflection.analysis,
+        state.id,
+      );
       return reflection;
     }
   } catch (e) {
     console.error("Failed to parse reflection:", e);
   }
-  
+
   return {
     success: true,
     analysis: "Reflection parsing failed, assuming success",
@@ -165,13 +199,14 @@ Respond in this exact JSON format:
 }
 
 export async function runAgent(
-  goal: string, 
+  goal: string,
   config: Partial<AgentConfig> = {},
-  onUpdate?: (state: AgentState) => void
+  onUpdate?: (state: AgentState) => void,
+  forcedId?: string,
 ): Promise<AgentState> {
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
-  const stateId = generateId();
-  
+  const stateId = forcedId ?? generateId();
+
   const state: AgentState = {
     id: stateId,
     goal,
@@ -187,6 +222,7 @@ export async function runAgent(
   };
 
   const emit = () => onUpdate?.(state);
+  emit();
 
   log(state, "info", `Starting agent with goal: ${goal}`);
   addGoal(goal, stateId);
@@ -197,12 +233,21 @@ export async function runAgent(
     const memory = formatMemoryForPrompt();
     state.tasks = await planTasks(goal, memory);
     log(state, "info", `Planned ${state.tasks.length} tasks`);
-    addMemoryEntry("decision", `Planned ${state.tasks.length} tasks for goal`, undefined, stateId);
+    addMemoryEntry(
+      "decision",
+      `Planned ${state.tasks.length} tasks for goal`,
+      undefined,
+      stateId,
+    );
     emit();
 
     for (let i = 0; i < state.tasks.length; i++) {
       if (state.stepsExecuted >= state.maxSteps) {
-        log(state, "warning", `Maximum steps (${state.maxSteps}) reached. Stopping execution.`);
+        log(
+          state,
+          "warning",
+          `Maximum steps (${state.maxSteps}) reached. Stopping execution.`,
+        );
         state.status = "paused";
         break;
       }
@@ -212,7 +257,7 @@ export async function runAgent(
       task.status = "running";
       task.startedAt = new Date().toISOString();
       state.status = "executing";
-      
+
       log(state, "task", `Starting task ${task.id}: ${task.description}`);
       emit();
 
@@ -224,22 +269,34 @@ export async function runAgent(
         try {
           result = await executeTaskWithTools(task, state);
           state.stepsExecuted++;
-          
-          log(state, "task", `Task ${task.id} result: ${result.substring(0, 200)}...`);
+
+          log(
+            state,
+            "task",
+            `Task ${task.id} result: ${result.substring(0, 200)}...`,
+          );
           emit();
 
           if (finalConfig.reflectionEnabled) {
             state.status = "reflecting";
             emit();
-            
+
             reflection = await reflectOnTask(task, result, state);
             task.reflection = reflection;
-            
-            log(state, "reflection", `Reflection: ${reflection.analysis} (confidence: ${reflection.confidence}%)`);
+
+            log(
+              state,
+              "reflection",
+              `Reflection: ${reflection.analysis} (confidence: ${reflection.confidence}%)`,
+            );
             emit();
 
             if (reflection.shouldRetry && retries < finalConfig.maxRetries) {
-              log(state, "warning", `Retrying task ${task.id} based on reflection`);
+              log(
+                state,
+                "warning",
+                `Retrying task ${task.id} based on reflection`,
+              );
               retries++;
               continue;
             }
@@ -248,10 +305,14 @@ export async function runAgent(
           } else {
             task.status = "done";
           }
-          
+
           break;
         } catch (error: any) {
-          log(state, "error", `Error executing task ${task.id}: ${error.message}`);
+          log(
+            state,
+            "error",
+            `Error executing task ${task.id}: ${error.message}`,
+          );
           retries++;
           if (retries > finalConfig.maxRetries) {
             task.status = "failed";
@@ -262,19 +323,28 @@ export async function runAgent(
 
       task.result = result;
       task.completedAt = new Date().toISOString();
-      addMemoryEntry("task", `Completed: ${task.description}`, result.substring(0, 500), stateId);
+      addMemoryEntry(
+        "task",
+        `Completed: ${task.description}`,
+        result.substring(0, 500),
+        stateId,
+      );
       emit();
 
       if (task.status === "failed" && !finalConfig.autonomousMode) {
-        log(state, "error", `Task ${task.id} failed. Stopping non-autonomous execution.`);
+        log(
+          state,
+          "error",
+          `Task ${task.id} failed. Stopping non-autonomous execution.`,
+        );
         state.status = "failed";
         break;
       }
     }
 
-    const allDone = state.tasks.every(t => t.status === "done");
-    const anyFailed = state.tasks.some(t => t.status === "failed");
-    
+    const allDone = state.tasks.every((t) => t.status === "done");
+    const anyFailed = state.tasks.some((t) => t.status === "failed");
+
     if (allDone) {
       state.status = "completed";
       updateGoalStatus(stateId, "completed");
@@ -284,7 +354,6 @@ export async function runAgent(
       updateGoalStatus(stateId, "failed");
       log(state, "error", "Some tasks failed.");
     }
-    
   } catch (error: any) {
     log(state, "error", `Agent error: ${error.message}`);
     state.status = "failed";
@@ -295,21 +364,23 @@ export async function runAgent(
   return state;
 }
 
-export async function resumeUnfinishedGoals(onUpdate?: (state: AgentState) => void): Promise<AgentState[]> {
+export async function resumeUnfinishedGoals(
+  onUpdate?: (state: AgentState) => void,
+): Promise<AgentState[]> {
   const unfinished = getUnfinishedGoals();
   const results: AgentState[] = [];
-  
+
   for (const goal of unfinished) {
     console.log(`Resuming goal: ${goal.goal}`);
     const state = await runAgent(goal.goal, { autonomousMode: true }, onUpdate);
     results.push(state);
   }
-  
+
   return results;
 }
 
 export function getAvailableTools(): { name: string; description: string }[] {
-  return Array.from(toolRegistry.values()).map(t => ({
+  return Array.from(toolRegistry.values()).map((t) => ({
     name: t.name,
     description: t.description,
   }));
