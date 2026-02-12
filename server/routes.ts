@@ -2,9 +2,20 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import OpenAI from "openai";
 import { chatStorage } from "./replit_integrations/chat/storage";
-import { runAgent, resumeUnfinishedGoals, getAvailableTools } from "./agent/engine";
-import { loadMemory, clearMemory, getMemoryStats, getUnfinishedGoals } from "./agent/memory";
-import { AgentState } from "./agent/types";
+import { resumeUnfinishedGoals, getAvailableTools } from "./agent/engine";
+import {
+  loadMemory,
+  clearMemory,
+  getMemoryStats,
+  getUnfinishedGoals,
+} from "./agent/memory";
+import {
+  createRedis,
+  redisChannelAgentEvents,
+  redisKeyAgentState,
+} from "./agent/redis";
+import { enqueueAgentRun } from "./agent/queue";
+import { sseWrite, type AgentEvent } from "./agent/events";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -183,7 +194,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/conversations", async (req: Request, res: Response) => {
     try {
       const { title } = req.body;
-      const conversation = await chatStorage.createConversation(title || "New Chat");
+      const conversation = await chatStorage.createConversation(
+        title || "New Chat",
+      );
       res.status(201).json(conversation);
     } catch (error) {
       console.error("Error creating conversation:", error);
@@ -220,158 +233,195 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Send message and get AI response (streaming with agent steps)
-  app.post("/api/conversations/:id/messages", async (req: Request, res: Response) => {
-    try {
-      const conversationId = parseInt(req.params.id);
-      const { content } = req.body;
+  app.post(
+    "/api/conversations/:id/messages",
+    async (req: Request, res: Response) => {
+      try {
+        const conversationId = parseInt(req.params.id);
+        const { content } = req.body;
 
-      if (!content || typeof content !== "string") {
-        return res.status(400).json({ error: "Message content is required" });
-      }
+        if (!content || typeof content !== "string") {
+          return res.status(400).json({ error: "Message content is required" });
+        }
 
-      // Save user message
-      await chatStorage.createMessage(conversationId, "user", content);
+        // Save user message
+        await chatStorage.createMessage(conversationId, "user", content);
 
-      // Get conversation history for context
-      const existingMessages = await chatStorage.getMessagesByConversation(conversationId);
-      const chatMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-        { role: "system", content: AGENT_SYSTEM_PROMPT },
-        ...existingMessages.map((m) => ({
-          role: m.role as "user" | "assistant",
-          content: m.content,
-        })),
-      ];
-
-      // Set up SSE
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-
-      // Send agent status and task updates
-      const sendEvent = (data: any) => {
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-      };
-
-      // Analyze task complexity to determine agent behavior
-      const taskKeywords = {
-        complex: ["build", "create", "implement", "design", "develop", "make", "generate"],
-        research: ["research", "find", "search", "look up", "what is", "how to", "best practice"],
-        simple: ["fix", "change", "update", "modify", "edit"],
-      };
-
-      const lowerContent = content.toLowerCase();
-      const isComplex = taskKeywords.complex.some(k => lowerContent.includes(k));
-      const isResearch = taskKeywords.research.some(k => lowerContent.includes(k));
-
-      // Generate task list for complex requests
-      if (isComplex) {
-        const tasks = [
-          { id: "1", name: "Analyze Requirements", status: "running" },
-          { id: "2", name: "Plan Architecture", status: "pending" },
-          { id: "3", name: "Generate Code", status: "pending" },
-          { id: "4", name: "Review & Finalize", status: "pending" },
+        // Get conversation history for context
+        const existingMessages =
+          await chatStorage.getMessagesByConversation(conversationId);
+        const chatMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+          { role: "system", content: AGENT_SYSTEM_PROMPT },
+          ...existingMessages.map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          })),
         ];
 
-        sendEvent({ tasks, currentTaskId: "1" });
-        sendEvent({ status: "analyzing", step: "Understanding your requirements..." });
-        await new Promise(resolve => setTimeout(resolve, 600));
+        // Set up SSE
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
 
-        tasks[0].status = "complete";
-        tasks[1].status = "running";
-        sendEvent({ tasks, currentTaskId: "2" });
-        sendEvent({ status: "planning", step: "Designing optimal approach..." });
-        await new Promise(resolve => setTimeout(resolve, 600));
+        // Send agent status and task updates
+        const sendEvent = (data: any) => {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        };
 
-        tasks[1].status = "complete";
-        tasks[2].status = "running";
-        sendEvent({ tasks, currentTaskId: "3" });
-        sendEvent({ status: "generating", step: "Building production-ready solution..." });
-      } else if (isResearch) {
-        sendEvent({ status: "researching", step: "Gathering relevant information..." });
-        await new Promise(resolve => setTimeout(resolve, 400));
-        sendEvent({ status: "generating", step: "Synthesizing response..." });
-      } else {
-        sendEvent({ status: "generating", step: "Processing your request..." });
-      }
+        // Analyze task complexity to determine agent behavior
+        const taskKeywords = {
+          complex: [
+            "build",
+            "create",
+            "implement",
+            "design",
+            "develop",
+            "make",
+            "generate",
+          ],
+          research: [
+            "research",
+            "find",
+            "search",
+            "look up",
+            "what is",
+            "how to",
+            "best practice",
+          ],
+          simple: ["fix", "change", "update", "modify", "edit"],
+        };
 
-      // Stream response from OpenAI
-      const stream = await openai.chat.completions.create({
-        model: "gpt-5.2",
-        messages: chatMessages,
-        stream: true,
-        max_completion_tokens: 16384,
-      });
+        const lowerContent = content.toLowerCase();
+        const isComplex = taskKeywords.complex.some((k) =>
+          lowerContent.includes(k),
+        );
+        const isResearch = taskKeywords.research.some((k) =>
+          lowerContent.includes(k),
+        );
 
-      let fullResponse = "";
+        // Generate task list for complex requests
+        if (isComplex) {
+          const tasks = [
+            { id: "1", name: "Analyze Requirements", status: "running" },
+            { id: "2", name: "Plan Architecture", status: "pending" },
+            { id: "3", name: "Generate Code", status: "pending" },
+            { id: "4", name: "Review & Finalize", status: "pending" },
+          ];
 
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || "";
-        if (content) {
-          fullResponse += content;
-          sendEvent({ content });
+          sendEvent({ tasks, currentTaskId: "1" });
+          sendEvent({
+            status: "analyzing",
+            step: "Understanding your requirements...",
+          });
+          await new Promise((resolve) => setTimeout(resolve, 600));
+
+          tasks[0].status = "complete";
+          tasks[1].status = "running";
+          sendEvent({ tasks, currentTaskId: "2" });
+          sendEvent({
+            status: "planning",
+            step: "Designing optimal approach...",
+          });
+          await new Promise((resolve) => setTimeout(resolve, 600));
+
+          tasks[1].status = "complete";
+          tasks[2].status = "running";
+          sendEvent({ tasks, currentTaskId: "3" });
+          sendEvent({
+            status: "generating",
+            step: "Building production-ready solution...",
+          });
+        } else if (isResearch) {
+          sendEvent({
+            status: "researching",
+            step: "Gathering relevant information...",
+          });
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          sendEvent({ status: "generating", step: "Synthesizing response..." });
+        } else {
+          sendEvent({
+            status: "generating",
+            step: "Processing your request...",
+          });
+        }
+
+        // Stream response from OpenAI
+        const stream = await openai.chat.completions.create({
+          model: "gpt-5.2",
+          messages: chatMessages,
+          stream: true,
+          max_completion_tokens: 16384,
+        });
+
+        let fullResponse = "";
+
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || "";
+          if (content) {
+            fullResponse += content;
+            sendEvent({ content });
+          }
+        }
+
+        // Save assistant message
+        await chatStorage.createMessage(
+          conversationId,
+          "assistant",
+          fullResponse,
+        );
+
+        // Finalize tasks if complex
+        if (isComplex) {
+          const finalTasks = [
+            { id: "1", name: "Analyze Requirements", status: "complete" },
+            { id: "2", name: "Plan Architecture", status: "complete" },
+            { id: "3", name: "Generate Code", status: "complete" },
+            { id: "4", name: "Review & Finalize", status: "complete" },
+          ];
+          sendEvent({ tasks: finalTasks });
+        }
+
+        // Update conversation title if it's the first exchange
+        if (existingMessages.length === 1) {
+          const titleResponse = await openai.chat.completions.create({
+            model: "gpt-5-nano",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Generate a very short title (3-5 words) for this conversation. Return only the title text.",
+              },
+              { role: "user", content: existingMessages[0].content },
+            ],
+            max_completion_tokens: 20,
+          });
+          const title =
+            titleResponse.choices[0]?.message?.content?.trim() || "New Chat";
+          await chatStorage.updateConversationTitle(conversationId, title);
+          sendEvent({ titleUpdate: title });
+        }
+
+        sendEvent({ done: true, status: "complete" });
+        res.end();
+      } catch (error) {
+        console.error("Error sending message:", error);
+        if (res.headersSent) {
+          res.write(
+            `data: ${JSON.stringify({ error: "Failed to process request" })}\n\n`,
+          );
+          res.end();
+        } else {
+          res.status(500).json({ error: "Failed to send message" });
         }
       }
-
-      // Save assistant message
-      await chatStorage.createMessage(conversationId, "assistant", fullResponse);
-
-      // Finalize tasks if complex
-      if (isComplex) {
-        const finalTasks = [
-          { id: "1", name: "Analyze Requirements", status: "complete" },
-          { id: "2", name: "Plan Architecture", status: "complete" },
-          { id: "3", name: "Generate Code", status: "complete" },
-          { id: "4", name: "Review & Finalize", status: "complete" },
-        ];
-        sendEvent({ tasks: finalTasks });
-      }
-
-      // Update conversation title if it's the first exchange
-      if (existingMessages.length === 1) {
-        const titleResponse = await openai.chat.completions.create({
-          model: "gpt-5-nano",
-          messages: [
-            { role: "system", content: "Generate a very short title (3-5 words) for this conversation. Return only the title text." },
-            { role: "user", content: existingMessages[0].content },
-          ],
-          max_completion_tokens: 20,
-        });
-        const title = titleResponse.choices[0]?.message?.content?.trim() || "New Chat";
-        await chatStorage.updateConversationTitle(conversationId, title);
-        sendEvent({ titleUpdate: title });
-      }
-
-      sendEvent({ done: true, status: "complete" });
-      res.end();
-    } catch (error) {
-      console.error("Error sending message:", error);
-      if (res.headersSent) {
-        res.write(`data: ${JSON.stringify({ error: "Failed to process request" })}\n\n`);
-        res.end();
-      } else {
-        res.status(500).json({ error: "Failed to send message" });
-      }
-    }
-  });
+    },
+  );
 
   // =====================
   // AUTONOMOUS AGENT API
   // =====================
 
-  const activeAgents: Map<string, AgentState> = new Map();
-  const agentClients: Map<string, Response[]> = new Map();
-
-  function broadcastAgentUpdate(agentId: string, state: AgentState) {
-    const clients = agentClients.get(agentId) || [];
-    clients.forEach((res) => {
-      try {
-        res.write(`data: ${JSON.stringify(state)}\n\n`);
-      } catch (e) {
-        console.error("Error broadcasting to client:", e);
-      }
-    });
-    activeAgents.set(agentId, state);
-  }
+  const redis = createRedis();
 
   // Run agent with a goal
   app.post("/api/agent", async (req: Request, res: Response) => {
@@ -379,48 +429,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!goal) return res.status(400).json({ error: "Goal required" });
 
     try {
-      const result = await runAgent(
+      const agentId = await enqueueAgentRun({
         goal,
-        { autonomousMode: autonomous, maxSteps },
-        (state) => broadcastAgentUpdate(state.id, state)
-      );
-      res.json(result);
+        config: { autonomousMode: autonomous, maxSteps },
+      });
+      res.json({ agentId, status: "queued" });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
   // Stream agent updates via SSE
-  app.get("/api/agent/stream/:id", (req: Request, res: Response) => {
-    const { id } = req.params;
-    
+  app.get("/api/agent/stream/:id", async (req: Request, res: Response) => {
+    const agentId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : req.params.id;
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
-    
-    const clients = agentClients.get(id) || [];
-    clients.push(res);
-    agentClients.set(id, clients);
-    
-    const currentState = activeAgents.get(id);
-    if (currentState) {
-      res.write(`data: ${JSON.stringify(currentState)}\n\n`);
+
+    res.flushHeaders?.();
+
+    const last = await redis.get(redisKeyAgentState(agentId));
+    if (last) {
+      const evt: AgentEvent = {
+        type: "state",
+        agentId,
+        state: JSON.parse(last),
+      };
+      sseWrite(res, evt);
+    } else {
+      sseWrite(res, {
+        type: "log",
+        agentId,
+        level: "info",
+        message: "No cached state yet (queued or new run).",
+      });
     }
-    
-    req.on("close", () => {
-      const updatedClients = (agentClients.get(id) || []).filter((c) => c !== res);
-      agentClients.set(id, updatedClients);
+
+    const redisSub = createRedis();
+    const channel = redisChannelAgentEvents(agentId);
+    await redisSub.subscribe(channel);
+
+    const onMsg = (ch: string, msg: string) => {
+      if (ch !== channel) return;
+      try {
+        sseWrite(res, JSON.parse(msg) as AgentEvent);
+      } catch {
+        sseWrite(res, {
+          type: "log",
+          agentId,
+          level: "warn",
+          message: "Bad event JSON received.",
+        });
+      }
+    };
+
+    redisSub.on("message", onMsg);
+
+    req.on("close", async () => {
+      redisSub.off("message", onMsg);
+      try {
+        await redisSub.unsubscribe(channel);
+      } catch {
+        // noop
+      }
+      await redisSub.quit();
+      res.end();
     });
   });
 
   // Get agent status
-  app.get("/api/agent/status/:id", (req: Request, res: Response) => {
-    const { id } = req.params;
-    const state = activeAgents.get(id);
+  app.get("/api/agent/status/:id", async (req: Request, res: Response) => {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const state = await redis.get(redisKeyAgentState(id));
     if (!state) {
       return res.status(404).json({ error: "Agent not found" });
     }
-    res.json(state);
+    res.json(JSON.parse(state));
   });
 
   // Get agent memory
@@ -456,9 +543,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Resume unfinished goals
   app.post("/api/agent/resume", async (req: Request, res: Response) => {
     try {
-      const results = await resumeUnfinishedGoals((state) =>
-        broadcastAgentUpdate(state.id, state)
-      );
+      const results = await resumeUnfinishedGoals();
       res.json(results);
     } catch (error: any) {
       res.status(500).json({ error: error.message });

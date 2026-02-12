@@ -14,7 +14,8 @@
     "lint:fix": "npx expo lint --fix",
     "check:types": "tsc --noEmit",
     "check:format": "prettier --check \"**/*.{js,ts,tsx,css,json}\"",
-    "format": "prettier --write \"**/*.{js,ts,tsx,css,json}\""
+    "format": "prettier --write \"**/*.{js,ts,tsx,css,json}\"",
+    "agent:worker": "tsx server/agent/worker-entry.ts"
   },
   "dependencies": {
     "@expo-google-fonts/nunito": "^0.4.2",
@@ -27,6 +28,7 @@
     "@tanstack/react-query": "^5.90.7",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/uuid": "^10.0.0",
+    "bullmq": "^5.68.0",
     "drizzle-orm": "^0.39.3",
     "drizzle-zod": "^0.7.1",
     "expo": "^54.0.23",
@@ -48,6 +50,7 @@
     "expo-web-browser": "~15.0.9",
     "express": "^5.0.1",
     "http-proxy-middleware": "^3.0.5",
+    "ioredis": "^5.9.2",
     "marked": "^17.0.1",
     "openai": "^6.17.0",
     "p-limit": "^7.2.0",
