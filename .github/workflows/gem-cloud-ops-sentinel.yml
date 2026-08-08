@@ -28,6 +28,9 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Validate sentinel syntax
+        run: node --check scripts/gem-ops-sentinel.mjs
+
       - name: Restore previous sentinel state
         id: cache-restore
         uses: actions/cache/restore@v4
