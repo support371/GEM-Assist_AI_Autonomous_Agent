@@ -74,6 +74,19 @@ assert.equal(plan.tasks[0].priority, "P1");
 assert.equal(plan.tasks[0].source.kind, "repository");
 assert.ok(plan.tasks[0].approvalRequiredFor.includes("merge"));
 assert.equal(plan.tasks[1].priority, "P3");
+assert.equal(plan.priorityCounts.P1, 1);
+assert.equal(plan.priorityCounts.P3, 1);
+
+const summary = JSON.parse(
+  await fs.readFile(path.join(outputDir, "remediation-summary.json"), "utf8"),
+);
+assert.equal(summary.executionAuthority, "PREPARE_ONLY");
+assert.equal(summary.totalTasks, 2);
+assert.equal(summary.counts.P0, 0);
+assert.equal(summary.counts.P1, 1);
+assert.equal(summary.counts.P2, 0);
+assert.equal(summary.counts.P3, 1);
+assert.equal(summary.counts.P4, 0);
 assert.ok(await fs.stat(path.join(outputDir, "remediation-plan.md")));
 
 console.log("GEM Ops remediation planner smoke test passed");
