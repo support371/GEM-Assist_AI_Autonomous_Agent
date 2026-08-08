@@ -1,6 +1,7 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+import { registerGemOpsRoutes } from "./gem-ops/routes";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -40,7 +41,10 @@ function setupCors(app: express.Application) {
         "Access-Control-Allow-Methods",
         "GET, POST, PUT, DELETE, OPTIONS",
       );
-      res.header("Access-Control-Allow-Headers", "Content-Type");
+      res.header(
+        "Access-Control-Allow-Headers",
+        "Content-Type, X-GEM-Ops-Token",
+      );
       res.header("Access-Control-Allow-Credentials", "true");
     }
 
@@ -231,6 +235,7 @@ function setupErrorHandler(app: express.Application) {
   setupRequestLogging(app);
 
   configureExpoAndLanding(app);
+  registerGemOpsRoutes(app);
 
   const server = await registerRoutes(app);
 
