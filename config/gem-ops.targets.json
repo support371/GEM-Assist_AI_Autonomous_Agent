@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "policy": {
+    "mode": "read-only",
+    "timeoutMs": 12000,
+    "maxConcurrency": 4,
+    "failWorkflowOnCritical": false,
+    "billingGuard": "never-provision-paid-resources"
+  },
+  "httpTargets": [
+    {
+      "id": "gem-enterprise-public",
+      "name": "GEM Enterprise Public Site",
+      "url": "https://www.gemcybersecurityassist.com",
+      "criticality": "critical",
+      "expectedStatus": [200, 301, 302, 307, 308]
+    },
+    {
+      "id": "gem-enterprise-portal",
+      "name": "GEM Client Portal",
+      "url": "https://portal.gemcybersecurityassist.com",
+      "criticality": "high",
+      "expectedStatus": [200, 301, 302, 307, 308, 401, 403]
+    },
+    {
+      "id": "gem-enterprise-admin",
+      "name": "GEM Admin Portal",
+      "url": "https://admin.gemcybersecurityassist.com",
+      "criticality": "high",
+      "expectedStatus": [200, 301, 302, 307, 308, 401, 403]
+    },
+    {
+      "id": "gem-assist-enterprise-preview",
+      "name": "GEM Assist Enterprise Deployment",
+      "url": "https://gem-assist-enterprise.vercel.app",
+      "criticality": "medium",
+      "expectedStatus": [200, 301, 302, 307, 308]
+    },
+    {
+      "id": "crypto-signal-frontend",
+      "name": "Crypto Signal Frontend",
+      "url": "https://crypto-signal-bot-indol.vercel.app",
+      "criticality": "high",
+      "expectedStatus": [200, 301, 302, 307, 308]
+    },
+    {
+      "id": "crypto-signal-worker",
+      "name": "Crypto Signal Cloudflare Worker",
+      "url": "https://crypto-signal-bot-api.gr8r9bfzry.workers.dev",
+      "criticality": "high",
+      "expectedStatus": [200, 301, 302, 307, 308, 401, 403, 404]
+    },
+    {
+      "id": "btcc-readonly-monitor",
+      "name": "BTCC Read-Only Monitor",
+      "url": "https://gem-btcc-read-only-account-monitor-82ba578c.base44.app/security",
+      "criticality": "high",
+      "expectedStatus": [200, 301, 302, 307, 308, 401, 403]
+    }
+  ],
+  "repositories": [
+    {
+      "name": "support371/gem-enterprise",
+      "branch": "main",
+      "criticality": "critical",
+      "visibility": "public"
+    },
+    {
+      "name": "support371/crypto-signal-bot",
+      "branch": "feat/regulated-live-foundation",
+      "criticality": "critical",
+      "visibility": "public"
+    },
+    {
+      "name": "support371/fintech-microservices-core",
+      "branch": "main",
+      "criticality": "high",
+      "visibility": "public"
+    },
+    {
+      "name": "support371/GEM-Assist_AI_Autonomous_Agent",
+      "branch": "main",
+      "criticality": "high",
+      "visibility": "public"
+    },
+    {
+      "name": "support371/mystery-mcp",
+      "branch": "main",
+      "criticality": "medium",
+      "visibility": "private"
+    }
+  ]
+}
