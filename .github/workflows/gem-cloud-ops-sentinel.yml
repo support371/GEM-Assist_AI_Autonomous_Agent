@@ -31,6 +31,9 @@ jobs:
       - name: Validate sentinel syntax
         run: node --check scripts/gem-ops-sentinel.mjs
 
+      - name: Run sentinel smoke test
+        run: node tests/gem-ops-sentinel.smoke.mjs
+
       - name: Restore previous sentinel state
         id: cache-restore
         uses: actions/cache/restore@v4
