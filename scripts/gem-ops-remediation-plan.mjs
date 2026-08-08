@@ -99,6 +99,12 @@ function createTask(item, index) {
   };
 }
 
+function summarizePriorities(tasks) {
+  const counts = { P0: 0, P1: 0, P2: 0, P3: 0, P4: 0 };
+  for (const task of tasks) counts[task.priority] += 1;
+  return counts;
+}
+
 function markdown(plan) {
   const lines = [
     "# GEM Operations Remediation Plan",
@@ -144,6 +150,7 @@ async function main() {
   const tasks = actionable
     .map(createTask)
     .sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority]);
+  const priorityCounts = summarizePriorities(tasks);
 
   const plan = {
     schemaVersion: 1,
@@ -152,12 +159,23 @@ async function main() {
     sourceOverallState: report.overallState || "UNKNOWN",
     executionAuthority: "PREPARE_ONLY",
     destructiveActionsAllowed: false,
+    priorityCounts,
     tasks,
+  };
+
+  const publicSummary = {
+    schemaVersion: 1,
+    generatedAt: plan.generatedAt,
+    sourceOverallState: plan.sourceOverallState,
+    executionAuthority: plan.executionAuthority,
+    totalTasks: tasks.length,
+    counts: priorityCounts,
   };
 
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
   await fs.writeFile(path.join(OUTPUT_DIR, "remediation-plan.json"), JSON.stringify(plan, null, 2) + "\n", "utf8");
   await fs.writeFile(path.join(OUTPUT_DIR, "remediation-plan.md"), markdown(plan) + "\n", "utf8");
+  await fs.writeFile(path.join(OUTPUT_DIR, "remediation-summary.json"), JSON.stringify(publicSummary, null, 2) + "\n", "utf8");
   console.log(markdown(plan));
 }
 
