@@ -15,7 +15,10 @@
     "check:types": "tsc --noEmit",
     "check:format": "prettier --check \"**/*.{js,ts,tsx,css,json}\"",
     "format": "prettier --write \"**/*.{js,ts,tsx,css,json}\"",
-    "agent:worker": "tsx server/agent/worker-entry.ts"
+    "agent:worker": "tsx server/agent/worker-entry.ts",
+    "ops:check": "node scripts/gem-ops-sentinel.mjs",
+    "ops:plan": "node scripts/gem-ops-remediation-plan.mjs",
+    "ops:test": "node tests/gem-ops-sentinel.smoke.mjs && node tests/gem-ops-remediation-plan.smoke.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/nunito": "^0.4.2",
@@ -45,7 +48,7 @@
     "expo-sharing": "^14.0.8",
     "expo-splash-screen": "~31.0.10",
     "expo-status-bar": "~3.0.8",
-    "expo-symbols": "~1.0.7",
+    "expo-symbols": "~1.0.6",
     "expo-system-ui": "~6.0.8",
     "expo-web-browser": "~15.0.9",
     "express": "^5.0.1",
@@ -79,7 +82,7 @@
     "@types/express": "^5.0.0",
     "@types/node": "24.10.0",
     "@types/react": "~19.1.0",
-    "babel-plugin-module-resolver": "^5.0.2",
+    "babel-plugin-module-resolver": "^0.3.9",
     "drizzle-kit": "^0.31.4",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
