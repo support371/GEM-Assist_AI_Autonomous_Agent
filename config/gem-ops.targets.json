@@ -1,11 +1,13 @@
 {
-  "version": 1,
+  "version": 2,
   "policy": {
     "mode": "read-only",
     "timeoutMs": 12000,
     "maxConcurrency": 4,
     "failWorkflowOnCritical": false,
-    "billingGuard": "never-provision-paid-resources"
+    "billingGuard": "never-provision-paid-resources",
+    "maxRemoteRequestsPerRun": 40,
+    "maxRetriesPerTarget": 1
   },
   "httpTargets": [
     {
@@ -56,6 +58,34 @@
       "url": "https://gem-btcc-read-only-account-monitor-82ba578c.base44.app/security",
       "criticality": "high",
       "expectedStatus": [200, 301, 302, 307, 308, 401, 403]
+    },
+    {
+      "id": "supabase-gem-auth-gateway",
+      "name": "Supabase GEM Auth Gateway",
+      "url": "https://slzdjoqpzbkwzuaexlkj.supabase.co/functions/v1/gem-auth-gateway",
+      "criticality": "high",
+      "expectedStatus": [200, 400, 401, 403, 405]
+    },
+    {
+      "id": "supabase-gem-admin-read",
+      "name": "Supabase GEM Admin Read",
+      "url": "https://slzdjoqpzbkwzuaexlkj.supabase.co/functions/v1/gem-admin-read",
+      "criticality": "high",
+      "expectedStatus": [200, 400, 401, 403, 405]
+    },
+    {
+      "id": "supabase-gem-admin-write",
+      "name": "Supabase GEM Admin Write",
+      "url": "https://slzdjoqpzbkwzuaexlkj.supabase.co/functions/v1/gem-admin-write",
+      "criticality": "critical",
+      "expectedStatus": [200, 400, 401, 403, 405]
+    },
+    {
+      "id": "supabase-gem-command-center-bridge",
+      "name": "Supabase GEM Command Center Bridge",
+      "url": "https://slzdjoqpzbkwzuaexlkj.supabase.co/functions/v1/gem-command-center-bridge",
+      "criticality": "high",
+      "expectedStatus": [200, 400, 401, 403, 405]
     }
   ],
   "repositories": [
@@ -63,31 +93,72 @@
       "name": "support371/gem-enterprise",
       "branch": "main",
       "criticality": "critical",
-      "visibility": "public"
+      "visibility": "public",
+      "inspectCi": true
     },
     {
       "name": "support371/crypto-signal-bot",
       "branch": "feat/regulated-live-foundation",
       "criticality": "critical",
-      "visibility": "public"
+      "visibility": "public",
+      "inspectCi": true
     },
     {
       "name": "support371/fintech-microservices-core",
       "branch": "main",
       "criticality": "high",
-      "visibility": "public"
+      "visibility": "public",
+      "inspectCi": true
     },
     {
       "name": "support371/GEM-Assist_AI_Autonomous_Agent",
       "branch": "main",
       "criticality": "high",
-      "visibility": "public"
+      "visibility": "public",
+      "inspectCi": true
     },
     {
       "name": "support371/mystery-mcp",
       "branch": "main",
       "criticality": "medium",
-      "visibility": "private"
+      "visibility": "private",
+      "inspectCi": true
     }
-  ]
+  ],
+  "vercel": {
+    "teamId": "team_7lMXW95WSLeyK4yAObe8FptW",
+    "projects": [
+      {
+        "id": "prj_VDGqnA7wZt2E65LLvT94ZOpnYc2Z",
+        "name": "support371-gem-enterprise",
+        "criticality": "critical",
+        "target": "production"
+      },
+      {
+        "id": "prj_sdk3k44uV3pCj5p5njSzHzm1vOJX",
+        "name": "crypto-signal-bot",
+        "criticality": "high",
+        "target": "production",
+        "allowNoProductionDeployment": true
+      },
+      {
+        "id": "prj_Bz3H5R4xgOxPjgHxUM2uJSyWEwRh",
+        "name": "gem-assist-enterprise",
+        "criticality": "medium",
+        "target": "production",
+        "allowNoProductionDeployment": true
+      }
+    ]
+  },
+  "supabase": {
+    "projectRef": "slzdjoqpzbkwzuaexlkj",
+    "projectName": "supabase-charcoal-lens",
+    "expectedProjectStatus": "ACTIVE_HEALTHY",
+    "protectedFunctions": [
+      "gem-auth-gateway",
+      "gem-admin-read",
+      "gem-admin-write",
+      "gem-command-center-bridge"
+    ]
+  }
 }
