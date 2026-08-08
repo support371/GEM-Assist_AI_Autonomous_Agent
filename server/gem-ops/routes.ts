@@ -11,7 +11,7 @@ const REFRESH_TIMEOUT_MS = 30_000;
 
 interface PublicSummary {
   schemaVersion?: number;
-  generatedAt?: string;
+  generatedAt?: string | null;
   overallState?: string;
   counts?: {
     checked?: number;
@@ -24,6 +24,23 @@ interface PublicSummary {
   resolved?: number;
   remoteRequests?: number;
   billingGuard?: string;
+  message?: string;
+}
+
+interface RemediationSummary {
+  schemaVersion?: number;
+  generatedAt?: string | null;
+  sourceOverallState?: string;
+  executionAuthority?: string;
+  totalTasks?: number;
+  counts?: {
+    P0?: number;
+    P1?: number;
+    P2?: number;
+    P3?: number;
+    P4?: number;
+  };
+  message?: string;
 }
 
 async function readJson<T>(filePath: string): Promise<T | null> {
@@ -34,20 +51,28 @@ async function readJson<T>(filePath: string): Promise<T | null> {
   }
 }
 
-function publicSummaryPath(): string {
+function outputFile(name: string): string {
   return path.resolve(
     process.cwd(),
     process.env.GEM_OPS_OUTPUT_DIR || DEFAULT_OUTPUT_DIR,
-    "public-summary.json",
+    name,
   );
 }
 
+function publicSummaryPath(): string {
+  return outputFile("public-summary.json");
+}
+
 function detailedReportPath(): string {
-  return path.resolve(
-    process.cwd(),
-    process.env.GEM_OPS_OUTPUT_DIR || DEFAULT_OUTPUT_DIR,
-    "latest.json",
-  );
+  return outputFile("latest.json");
+}
+
+function remediationSummaryPath(): string {
+  return outputFile("remediation-summary.json");
+}
+
+function remediationPlanPath(): string {
+  return outputFile("remediation-plan.json");
 }
 
 function secureTokenMatches(request: Request): boolean {
@@ -81,6 +106,7 @@ async function getCapabilities() {
     mode: "read-only",
     pcIndependent: true,
     liveMutationEnabled: false,
+    remediationAuthority: "PREPARE_ONLY",
     remoteRefreshEnabled: process.env.GEM_OPS_ALLOW_REFRESH === "true",
     authenticatedDetailEnabled: Boolean(process.env.GEM_OPS_DASHBOARD_TOKEN),
     providers: {
@@ -106,9 +132,9 @@ async function getCapabilities() {
   };
 }
 
-async function runFixedSentinel(): Promise<{ code: number; stderr: string }> {
+async function runFixedScript(script: string): Promise<{ code: number; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["scripts/gem-ops-sentinel.mjs"], {
+    const child = spawn(process.execPath, [script], {
       cwd: process.cwd(),
       shell: false,
       env: {
@@ -127,7 +153,7 @@ async function runFixedSentinel(): Promise<{ code: number; stderr: string }> {
       child.kill("SIGTERM");
       if (!settled) {
         settled = true;
-        reject(new Error(`GEM operations refresh exceeded ${REFRESH_TIMEOUT_MS}ms`));
+        reject(new Error(`GEM operations task exceeded ${REFRESH_TIMEOUT_MS}ms`));
       }
     }, REFRESH_TIMEOUT_MS);
 
@@ -152,6 +178,14 @@ async function runFixedSentinel(): Promise<{ code: number; stderr: string }> {
       }
     });
   });
+}
+
+async function runFixedSentinelAndPlanner(): Promise<{ code: number; stderr: string }> {
+  const sentinel = await runFixedScript("scripts/gem-ops-sentinel.mjs");
+  if (sentinel.code !== 0) return sentinel;
+  const planner = await runFixedScript("scripts/gem-ops-remediation-plan.mjs");
+  if (planner.code !== 0) return planner;
+  return { code: 0, stderr: "" };
 }
 
 export function registerGemOpsRoutes(app: Express): void {
@@ -179,6 +213,23 @@ export function registerGemOpsRoutes(app: Express): void {
     return res.json(summary);
   });
 
+  app.get("/api/ops/remediation-summary", async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const summary = await readJson<RemediationSummary>(remediationSummaryPath());
+    if (!summary) {
+      return res.json({
+        schemaVersion: 1,
+        generatedAt: null,
+        sourceOverallState: "NOT_INITIALIZED",
+        executionAuthority: "PREPARE_ONLY",
+        totalTasks: 0,
+        counts: { P0: 0, P1: 0, P2: 0, P3: 0, P4: 0 },
+        message: "No remediation queue exists yet.",
+      });
+    }
+    return res.json(summary);
+  });
+
   app.get("/api/ops/details", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!requireOpsToken(req, res)) return;
@@ -193,6 +244,20 @@ export function registerGemOpsRoutes(app: Express): void {
     return res.json(report);
   });
 
+  app.get("/api/ops/remediation-details", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!requireOpsToken(req, res)) return;
+
+    const plan = await readJson<Record<string, unknown>>(remediationPlanPath());
+    if (!plan) {
+      return res.status(404).json({
+        error: "Not initialized",
+        message: "No detailed GEM remediation plan exists in this runtime.",
+      });
+    }
+    return res.json(plan);
+  });
+
   app.post("/api/ops/refresh", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (process.env.GEM_OPS_ALLOW_REFRESH !== "true") {
@@ -204,20 +269,23 @@ export function registerGemOpsRoutes(app: Express): void {
     if (!requireOpsToken(req, res)) return;
 
     try {
-      const result = await runFixedSentinel();
+      const result = await runFixedSentinelAndPlanner();
       if (result.code !== 0) {
         return res.status(502).json({
-          error: "Sentinel refresh failed",
+          error: "Controller refresh failed",
           exitCode: result.code,
           stderr: result.stderr,
         });
       }
 
-      const summary = await readJson<PublicSummary>(publicSummaryPath());
-      return res.json({ ok: true, summary });
+      const [summary, remediation] = await Promise.all([
+        readJson<PublicSummary>(publicSummaryPath()),
+        readJson<RemediationSummary>(remediationSummaryPath()),
+      ]);
+      return res.json({ ok: true, summary, remediation });
     } catch (error) {
       return res.status(500).json({
-        error: "Sentinel refresh failed",
+        error: "Controller refresh failed",
         message: error instanceof Error ? error.message : "Unknown refresh failure",
       });
     }
