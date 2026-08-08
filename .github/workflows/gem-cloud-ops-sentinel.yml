@@ -28,11 +28,15 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Validate sentinel syntax
-        run: node --check scripts/gem-ops-sentinel.mjs
+      - name: Validate controller syntax
+        run: |
+          node --check scripts/gem-ops-sentinel.mjs
+          node --check scripts/gem-ops-remediation-plan.mjs
 
-      - name: Run sentinel smoke test
-        run: node tests/gem-ops-sentinel.smoke.mjs
+      - name: Run deterministic controller tests
+        run: |
+          node tests/gem-ops-sentinel.smoke.mjs
+          node tests/gem-ops-remediation-plan.smoke.mjs
 
       - name: Restore previous sentinel state
         id: cache-restore
@@ -64,6 +68,17 @@ jobs:
           fi
           echo "GEM sentinel completed. No production writes or paid-resource provisioning were attempted."
 
+      - name: Prepare remediation queue
+        if: always()
+        shell: bash
+        run: |
+          if [ -f artifacts/gem-ops/latest.json ]; then
+            node scripts/gem-ops-remediation-plan.mjs > artifacts/gem-ops/remediation-console.log 2>&1
+            echo "Prepare-only remediation queue generated."
+          else
+            echo "No sentinel report exists; remediation planner skipped."
+          fi
+
       - name: Publish private operational summary
         if: always() && github.event.repository.private == true
         shell: bash
@@ -73,6 +88,9 @@ jobs:
           else
             echo "# GEM Cloud Operations Sentinel" >> "$GITHUB_STEP_SUMMARY"
             echo "Sentinel did not produce a report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/remediation-plan.md ]; then
+            cat artifacts/gem-ops/remediation-plan.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Publish public-safe operational summary
@@ -84,6 +102,9 @@ jobs:
             node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/public-summary.json","utf8"));console.log(`- **Overall state:** ${r.overallState}\n- **Checks:** ${r.counts.checked}\n- **Healthy:** ${r.counts.healthy}\n- **Degraded:** ${r.counts.degraded}\n- **Failures:** ${r.counts.failed}\n- **Skipped:** ${r.counts.skipped}\n- **Material changes:** ${r.materialChanges}\n- **Resolved:** ${r.resolved}\n- **Remote requests:** ${r.remoteRequests}\n- **Billing guard:** ${r.billingGuard}\n- **Detail exposure:** suppressed because this repository is public`)' >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Sentinel did not produce a public-safe report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/remediation-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/remediation-summary.json","utf8"));console.log(`\n## Prepare-only remediation queue\n- **Total:** ${r.totalTasks}\n- **P0:** ${r.counts.P0}\n- **P1:** ${r.counts.P1}\n- **P2:** ${r.counts.P2}\n- **P3:** ${r.counts.P3}\n- **Authority:** ${r.executionAuthority}`)' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload detailed sentinel report
