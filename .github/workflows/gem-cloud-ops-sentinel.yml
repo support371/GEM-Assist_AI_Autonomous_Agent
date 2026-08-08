@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: gem-cloud-ops-sentinel
@@ -45,6 +46,7 @@ jobs:
       - name: Run GEM Cloud Operations Sentinel
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           GEM_OPS_CONFIG: config/gem-ops.targets.json
           GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
           GEM_OPS_PREVIOUS_STATE: .gem-ops-cache/latest.json
@@ -60,7 +62,7 @@ jobs:
             tail -n 30 artifacts/gem-ops/console.log
             exit "$code"
           fi
-          echo "GEM sentinel completed; detailed runtime output is retained only in the runner workspace unless this repository is private."
+          echo "GEM sentinel completed. No production writes or paid-resource provisioning were attempted."
 
       - name: Publish private operational summary
         if: always() && github.event.repository.private == true
@@ -78,10 +80,10 @@ jobs:
         shell: bash
         run: |
           echo "# GEM Cloud Operations Sentinel" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f artifacts/gem-ops/latest.json ]; then
-            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/latest.json","utf8"));console.log(`- **Overall state:** ${r.overallState}\n- **Checks:** ${r.counts.checked}\n- **Failures:** ${r.counts.failed}\n- **Material changes:** ${r.delta.materialChanges.length}\n- **Detail exposure:** suppressed because this repository is public`)' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f artifacts/gem-ops/public-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/public-summary.json","utf8"));console.log(`- **Overall state:** ${r.overallState}\n- **Checks:** ${r.counts.checked}\n- **Healthy:** ${r.counts.healthy}\n- **Degraded:** ${r.counts.degraded}\n- **Failures:** ${r.counts.failed}\n- **Skipped:** ${r.counts.skipped}\n- **Material changes:** ${r.materialChanges}\n- **Resolved:** ${r.resolved}\n- **Remote requests:** ${r.remoteRequests}\n- **Billing guard:** ${r.billingGuard}\n- **Detail exposure:** suppressed because this repository is public`)' >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "Sentinel did not produce a report." >> "$GITHUB_STEP_SUMMARY"
+            echo "Sentinel did not produce a public-safe report." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload detailed sentinel report
