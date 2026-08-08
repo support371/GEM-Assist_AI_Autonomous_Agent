@@ -48,10 +48,22 @@ jobs:
           GEM_OPS_CONFIG: config/gem-ops.targets.json
           GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
           GEM_OPS_PREVIOUS_STATE: .gem-ops-cache/latest.json
-        run: node scripts/gem-ops-sentinel.mjs
+        shell: bash
+        run: |
+          mkdir -p artifacts/gem-ops
+          set +e
+          node scripts/gem-ops-sentinel.mjs > artifacts/gem-ops/console.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            echo "GEM sentinel failed with exit code $code"
+            tail -n 30 artifacts/gem-ops/console.log
+            exit "$code"
+          fi
+          echo "GEM sentinel completed; detailed runtime output is retained only in the runner workspace unless this repository is private."
 
-      - name: Publish operational summary
-        if: always()
+      - name: Publish private operational summary
+        if: always() && github.event.repository.private == true
         shell: bash
         run: |
           if [ -f artifacts/gem-ops/latest.md ]; then
@@ -61,8 +73,19 @@ jobs:
             echo "Sentinel did not produce a report." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload sentinel report
-        if: always()
+      - name: Publish public-safe operational summary
+        if: always() && github.event.repository.private != true
+        shell: bash
+        run: |
+          echo "# GEM Cloud Operations Sentinel" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f artifacts/gem-ops/latest.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/latest.json","utf8"));console.log(`- **Overall state:** ${r.overallState}\n- **Checks:** ${r.counts.checked}\n- **Failures:** ${r.counts.failed}\n- **Material changes:** ${r.delta.materialChanges.length}\n- **Detail exposure:** suppressed because this repository is public`)' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Sentinel did not produce a report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload detailed sentinel report
+        if: always() && github.event.repository.private == true
         uses: actions/upload-artifact@v4
         with:
           name: gem-ops-report-${{ github.run_number }}
