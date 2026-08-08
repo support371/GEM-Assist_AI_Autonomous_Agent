@@ -5,10 +5,12 @@ import { BlurView } from "expo-blur";
 import { Platform, StyleSheet } from "react-native";
 import HomeStackNavigator from "@/navigation/HomeStackNavigator";
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
+import OpsScreen from "@/screens/OpsScreen";
 import { useTheme } from "@/hooks/useTheme";
 
 export type MainTabParamList = {
   HomeTab: undefined;
+  OpsTab: undefined;
   ProfileTab: undefined;
 };
 
@@ -50,6 +52,16 @@ export default function MainTabNavigator() {
           title: "Chats",
           tabBarIcon: ({ color, size }) => (
             <Feather name="message-square" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="OpsTab"
+        component={OpsScreen}
+        options={{
+          title: "Ops",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="activity" size={size} color={color} />
           ),
         }}
       />
