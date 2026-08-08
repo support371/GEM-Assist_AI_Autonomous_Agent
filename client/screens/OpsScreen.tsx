@@ -34,10 +34,27 @@ type OpsSummary = {
   message?: string;
 };
 
+type RemediationSummary = {
+  schemaVersion: number;
+  generatedAt: string | null;
+  sourceOverallState: string;
+  executionAuthority: string;
+  totalTasks: number;
+  counts: {
+    P0: number;
+    P1: number;
+    P2: number;
+    P3: number;
+    P4: number;
+  };
+  message?: string;
+};
+
 type OpsCapabilities = {
   mode: string;
   pcIndependent: boolean;
   liveMutationEnabled: boolean;
+  remediationAuthority: string;
   remoteRefreshEnabled: boolean;
   authenticatedDetailEnabled: boolean;
   providers: {
@@ -62,10 +79,19 @@ const emptyCounts: OpsCounts = {
   skipped: 0,
 };
 
+const emptyRemediationCounts = {
+  P0: 0,
+  P1: 0,
+  P2: 0,
+  P3: 0,
+  P4: 0,
+};
+
 export default function OpsScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const [summary, setSummary] = useState<OpsSummary | null>(null);
+  const [remediation, setRemediation] = useState<RemediationSummary | null>(null);
   const [capabilities, setCapabilities] = useState<OpsCapabilities | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -76,18 +102,20 @@ export default function OpsScreen() {
     setError(null);
     try {
       const base = getApiUrl();
-      const [summaryResponse, capabilitiesResponse] = await Promise.all([
+      const [summaryResponse, remediationResponse, capabilitiesResponse] = await Promise.all([
         fetch(new URL("/api/ops/summary", base), { credentials: "include" }),
+        fetch(new URL("/api/ops/remediation-summary", base), { credentials: "include" }),
         fetch(new URL("/api/ops/capabilities", base), { credentials: "include" }),
       ]);
 
-      if (!summaryResponse.ok || !capabilitiesResponse.ok) {
+      if (!summaryResponse.ok || !remediationResponse.ok || !capabilitiesResponse.ok) {
         throw new Error(
-          `Operations API unavailable (${summaryResponse.status}/${capabilitiesResponse.status})`,
+          `Operations API unavailable (${summaryResponse.status}/${remediationResponse.status}/${capabilitiesResponse.status})`,
         );
       }
 
       setSummary((await summaryResponse.json()) as OpsSummary);
+      setRemediation((await remediationResponse.json()) as RemediationSummary);
       setCapabilities((await capabilitiesResponse.json()) as OpsCapabilities);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load operations status");
@@ -116,9 +144,8 @@ export default function OpsScreen() {
   }, [summary?.overallState, theme]);
 
   const counts = summary?.counts || emptyCounts;
-  const providerEntries = capabilities
-    ? Object.entries(capabilities.providers)
-    : [];
+  const remediationCounts = remediation?.counts || emptyRemediationCounts;
+  const providerEntries = capabilities ? Object.entries(capabilities.providers) : [];
 
   return (
     <ScrollView
@@ -188,7 +215,7 @@ export default function OpsScreen() {
             <View style={styles.inlineRow}>
               <Feather name="activity" size={20} color={stateColor} />
               <ThemedText type="h3" style={{ color: stateColor }}>
-                {summary.overallState.replaceAll("_", " ")}
+                {summary.overallState.replace(/_/g, " ")}
               </ThemedText>
             </View>
             <ThemedText type="small" style={{ color: theme.textSecondary }}>
@@ -229,6 +256,31 @@ export default function OpsScreen() {
         </>
       ) : null}
 
+      {remediation ? (
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.backgroundDefault, borderColor: theme.border },
+          ]}
+        >
+          <View style={styles.inlineRow}>
+            <Feather name="clipboard" size={18} color={theme.link} />
+            <ThemedText type="h4">Remediation queue</ThemedText>
+          </View>
+          <InfoRow label="Open tasks" value={String(remediation.totalTasks)} />
+          <InfoRow label="P0 — immediate" value={String(remediationCounts.P0)} />
+          <InfoRow label="P1 — high" value={String(remediationCounts.P1)} />
+          <InfoRow label="P2 — normal" value={String(remediationCounts.P2)} />
+          <InfoRow label="P3 — access/review" value={String(remediationCounts.P3)} />
+          <InfoRow label="Authority" value={remediation.executionAuthority} />
+          {remediation.message ? (
+            <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              {remediation.message}
+            </ThemedText>
+          ) : null}
+        </View>
+      ) : null}
+
       {capabilities ? (
         <>
           <View
@@ -244,6 +296,7 @@ export default function OpsScreen() {
               label="Production mutation"
               value={capabilities.liveMutationEnabled ? "Enabled" : "Locked"}
             />
+            <InfoRow label="Remediation authority" value={capabilities.remediationAuthority} />
             <InfoRow
               label="Remote refresh"
               value={capabilities.remoteRefreshEnabled ? "Protected / enabled" : "Disabled"}
@@ -310,7 +363,15 @@ export default function OpsScreen() {
   );
 }
 
-function Metric({ label, value, icon }: { label: string; value: number; icon: React.ComponentProps<typeof Feather>["name"] }) {
+function Metric({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: number;
+  icon: React.ComponentProps<typeof Feather>["name"];
+}) {
   const { theme } = useTheme();
   return (
     <View
