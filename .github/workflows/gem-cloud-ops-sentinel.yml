@@ -1,0 +1,73 @@
+name: GEM Cloud Operations Sentinel
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: gem-cloud-ops-sentinel
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Read-only GEM delta inspection
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout controller
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Restore previous sentinel state
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .gem-ops-cache
+          key: gem-ops-state-${{ github.run_id }}
+          restore-keys: |
+            gem-ops-state-
+
+      - name: Run GEM Cloud Operations Sentinel
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GEM_OPS_CONFIG: config/gem-ops.targets.json
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+          GEM_OPS_PREVIOUS_STATE: .gem-ops-cache/latest.json
+        run: node scripts/gem-ops-sentinel.mjs
+
+      - name: Publish operational summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f artifacts/gem-ops/latest.md ]; then
+            cat artifacts/gem-ops/latest.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "# GEM Cloud Operations Sentinel" >> "$GITHUB_STEP_SUMMARY"
+            echo "Sentinel did not produce a report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload sentinel report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gem-ops-report-${{ github.run_number }}
+          path: artifacts/gem-ops/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Save current sentinel state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .gem-ops-cache
+          key: gem-ops-state-${{ github.run_id }}
