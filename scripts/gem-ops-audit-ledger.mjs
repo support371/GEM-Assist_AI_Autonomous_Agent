@@ -7,7 +7,8 @@ import process from "node:process";
 const OUTPUT_DIR = process.env.GEM_OPS_OUTPUT_DIR || "artifacts/gem-ops";
 const LEDGER_PATH = process.env.GEM_OPS_AUDIT_LEDGER || ".gem-ops-cache/audit-ledger.json";
 const MAX_EVENTS = Math.max(10, Number(process.env.GEM_OPS_AUDIT_LIMIT || 90));
-const VERIFY_ONLY = process.env.GEM_OPS_AUDIT_VERIFY_ONLY === "true";
+const VERIFY_ONLY =
+  process.env.GEM_OPS_AUDIT_VERIFY_ONLY === "true" || process.argv.includes("--verify-only");
 
 async function readOptional(file) {
   try {
