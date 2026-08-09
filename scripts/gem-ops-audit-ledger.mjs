@@ -140,17 +140,18 @@ async function main() {
 
   const previousHash = currentEvents.at(-1)?.eventHash || "GENESIS";
   const event = compactEvent({ ops, cost, remediation, readiness, history, previousHash });
-  event.sequence = (currentEvents.at(-1)?.sequence || 0) + 1;
-  event.eventHash = hashEvent(eventPayload(event));
-
   const sourceKey = event.sourceGeneratedAt || event.recordedAt;
-  const duplicate = currentEvents.some(
-    (item) => item.sourceGeneratedAt === sourceKey && item.eventHash === event.eventHash,
-  );
+  const duplicate = currentEvents.some((item) => item.sourceGeneratedAt === sourceKey);
+
+  if (!duplicate) {
+    event.sequence = (currentEvents.at(-1)?.sequence || 0) + 1;
+    event.eventHash = hashEvent(eventPayload(event));
+  }
+
   const nextEvents = duplicate ? currentEvents : [...currentEvents, event];
   const retained = nextEvents.slice(-MAX_EVENTS);
 
-  // Re-anchor a truncated ledger so the retained window remains independently verifiable.
+  // Re-anchor a truncated retained window so it remains independently verifiable.
   if (retained.length && retained[0].previousHash !== "GENESIS") {
     let previous = "GENESIS";
     for (let index = 0; index < retained.length; index += 1) {
