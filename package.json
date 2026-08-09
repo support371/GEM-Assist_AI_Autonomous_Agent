@@ -22,7 +22,7 @@
     "ops:readiness": "node scripts/gem-ops-release-readiness.mjs",
     "ops:history": "node scripts/gem-ops-history.mjs",
     "ops:all": "npm run ops:check && npm run ops:cost && npm run ops:plan && npm run ops:readiness && npm run ops:history",
-    "ops:test": "node tests/gem-ops-sentinel.smoke.mjs && node tests/gem-ops-cost-guard.smoke.mjs && node tests/gem-ops-remediation-plan.smoke.mjs && node tests/gem-ops-release-readiness.smoke.mjs && node tests/gem-ops-history.smoke.mjs"
+    "ops:test": "node tests/gem-ops-sentinel.smoke.mjs && node tests/gem-ops-cost-guard.smoke.mjs && node tests/gem-ops-remediation-plan.smoke.mjs && node tests/gem-ops-release-readiness.smoke.mjs && node tests/gem-ops-history.smoke.mjs && node tests/gem-ops-integration.contract.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/nunito": "^0.4.2",
