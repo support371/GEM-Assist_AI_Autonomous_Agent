@@ -20,8 +20,9 @@
     "ops:cost": "node scripts/gem-ops-cost-guard.mjs",
     "ops:plan": "node scripts/gem-ops-remediation-plan.mjs",
     "ops:readiness": "node scripts/gem-ops-release-readiness.mjs",
-    "ops:all": "npm run ops:check && npm run ops:cost && npm run ops:plan && npm run ops:readiness",
-    "ops:test": "node tests/gem-ops-sentinel.smoke.mjs && node tests/gem-ops-cost-guard.smoke.mjs && node tests/gem-ops-remediation-plan.smoke.mjs && node tests/gem-ops-release-readiness.smoke.mjs"
+    "ops:history": "node scripts/gem-ops-history.mjs",
+    "ops:all": "npm run ops:check && npm run ops:cost && npm run ops:plan && npm run ops:readiness && npm run ops:history",
+    "ops:test": "node tests/gem-ops-sentinel.smoke.mjs && node tests/gem-ops-cost-guard.smoke.mjs && node tests/gem-ops-remediation-plan.smoke.mjs && node tests/gem-ops-release-readiness.smoke.mjs && node tests/gem-ops-history.smoke.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/nunito": "^0.4.2",
