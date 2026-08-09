@@ -2,6 +2,7 @@ import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { registerGemOpsRoutes } from "./gem-ops/routes";
+import { registerGemOpsAuditRoutes } from "./gem-ops/audit-routes";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -236,6 +237,7 @@ function setupErrorHandler(app: express.Application) {
 
   configureExpoAndLanding(app);
   registerGemOpsRoutes(app);
+  registerGemOpsAuditRoutes(app);
 
   const server = await registerRoutes(app);
 
