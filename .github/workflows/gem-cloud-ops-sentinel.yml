@@ -49,6 +49,17 @@ jobs:
           restore-keys: |
             gem-ops-state-
 
+      - name: Verify cached audit integrity
+        env:
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+          GEM_OPS_AUDIT_LEDGER: .gem-ops-cache/audit-ledger.json
+          GEM_OPS_AUDIT_VERIFY_ONLY: "true"
+        shell: bash
+        run: |
+          mkdir -p artifacts/gem-ops
+          node scripts/gem-ops-audit-ledger.mjs > artifacts/gem-ops/audit-verify-console.log 2>&1
+          node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/audit-summary.json","utf8"));if(r.integrity!=="VALID"){console.error(`Audit integrity gate failed: ${r.failureReason || "unknown"}`);process.exit(1)};console.log(`Audit integrity gate passed; events=${r.eventCount}`)'
+
       - name: Run GEM Cloud Operations Sentinel
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -167,7 +178,7 @@ jobs:
             node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/remediation-summary.json","utf8"));console.log(`\n## Prepare-only remediation queue\n- **Total:** ${r.totalTasks}\n- **P0:** ${r.counts.P0}\n- **P1:** ${r.counts.P1}\n- **P2:** ${r.counts.P2}\n- **P3:** ${r.counts.P3}\n- **Cost tasks:** ${r.costTasks || 0}\n- **Authority:** ${r.executionAuthority}`)' >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ -f artifacts/gem-ops/release-readiness-summary.json ]; then
-            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/release-readiness-summary.json","utf8"));console.log(`\n## Release readiness\n- **Decision:** ${r.state}\n- **Blockers:** ${r.blockers}\n- **Warnings:** ${r.warnings}\n- **Authority:** ${r.authority}\n- **Automatic merge:** ${r.automaticMergeAllowed ? "ALLOWED" : "FORBIDDEN"}\n- **Automatic deploy:** ${r.automaticDeploymentAllowed ? "ALLOWED" : "FORBIDDEN"}`)' >> "$GITHUB_STEP_SUMMARY"
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/release-readiness-summary.json","utf8"));console.log(`\n## Release readiness\n- **Decision:** ${r.state}\n- **Blockers:** ${r.blockers}\n- **Warnings:** ${r.warnings}\n- **Audit integrity:** ${r.auditIntegrity || "NOT_AVAILABLE"}\n- **Authority:** ${r.authority}\n- **Automatic merge:** ${r.automaticMergeAllowed ? "ALLOWED" : "FORBIDDEN"}\n- **Automatic deploy:** ${r.automaticDeploymentAllowed ? "ALLOWED" : "FORBIDDEN"}`)' >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ -f artifacts/gem-ops/history-summary.json ]; then
             node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/history-summary.json","utf8"));console.log(`\n## Operational trend\n- **Trend:** ${r.trend}\n- **Runs retained:** ${r.retainedRuns}\n- **Latest operational state:** ${r.latest?.operationalState || "NOT_AVAILABLE"}\n- **Latest release state:** ${r.latest?.releaseState || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
