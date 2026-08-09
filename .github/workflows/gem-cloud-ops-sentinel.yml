@@ -31,11 +31,13 @@ jobs:
       - name: Validate controller syntax
         run: |
           node --check scripts/gem-ops-sentinel.mjs
+          node --check scripts/gem-ops-cost-guard.mjs
           node --check scripts/gem-ops-remediation-plan.mjs
 
       - name: Run deterministic controller tests
         run: |
           node tests/gem-ops-sentinel.smoke.mjs
+          node tests/gem-ops-cost-guard.smoke.mjs
           node tests/gem-ops-remediation-plan.smoke.mjs
 
       - name: Restore previous sentinel state
@@ -68,6 +70,19 @@ jobs:
           fi
           echo "GEM sentinel completed. No production writes or paid-resource provisioning were attempted."
 
+      - name: Run build-cost guard
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GEM_OPS_CONFIG: config/gem-ops.targets.json
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+        shell: bash
+        run: |
+          if [ -f config/gem-ops.targets.json ]; then
+            node scripts/gem-ops-cost-guard.mjs > artifacts/gem-ops/cost-guard-console.log 2>&1
+            echo "Build-cost guard completed without automatic upgrade or paid provisioning."
+          fi
+
       - name: Prepare remediation queue
         if: always()
         shell: bash
@@ -89,6 +104,9 @@ jobs:
             echo "# GEM Cloud Operations Sentinel" >> "$GITHUB_STEP_SUMMARY"
             echo "Sentinel did not produce a report." >> "$GITHUB_STEP_SUMMARY"
           fi
+          if [ -f artifacts/gem-ops/cost-guard.md ]; then
+            cat artifacts/gem-ops/cost-guard.md >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ -f artifacts/gem-ops/remediation-plan.md ]; then
             cat artifacts/gem-ops/remediation-plan.md >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -102,6 +120,9 @@ jobs:
             node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/public-summary.json","utf8"));console.log(`- **Overall state:** ${r.overallState}\n- **Checks:** ${r.counts.checked}\n- **Healthy:** ${r.counts.healthy}\n- **Degraded:** ${r.counts.degraded}\n- **Failures:** ${r.counts.failed}\n- **Skipped:** ${r.counts.skipped}\n- **Material changes:** ${r.materialChanges}\n- **Resolved:** ${r.resolved}\n- **Remote requests:** ${r.remoteRequests}\n- **Billing guard:** ${r.billingGuard}\n- **Detail exposure:** suppressed because this repository is public`)' >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Sentinel did not produce a public-safe report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/cost-guard-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/cost-guard-summary.json","utf8"));console.log(`\n## Build-cost guard\n- **State:** ${r.overallState}\n- **Vercel contexts:** ${r.totals.vercelContexts}\n- **Rate-limited:** ${r.totals.rateLimitedContexts}\n- **Duplicate contexts:** ${r.totals.duplicateContexts}\n- **Automatic paid upgrade:** ${r.automaticUpgradeAllowed ? "ALLOWED" : "FORBIDDEN"}`)' >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ -f artifacts/gem-ops/remediation-summary.json ]; then
             node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/remediation-summary.json","utf8"));console.log(`\n## Prepare-only remediation queue\n- **Total:** ${r.totalTasks}\n- **P0:** ${r.counts.P0}\n- **P1:** ${r.counts.P1}\n- **P2:** ${r.counts.P2}\n- **P3:** ${r.counts.P3}\n- **Authority:** ${r.executionAuthority}`)' >> "$GITHUB_STEP_SUMMARY"
