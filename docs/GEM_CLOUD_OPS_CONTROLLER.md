@@ -163,9 +163,9 @@ A prior release-gate attempt created jobs that terminated before executing steps
 
 ## Current deployment-cost observation
 
-The autonomous-agent repository has been observed with multiple Vercel contexts attached to the same revisions. Some earlier revisions produced successful previews while redundant contexts also hit Vercel `build-rate-limit`. Later branch revisions have been blocked more broadly by the same rate-limit condition.
+The current branch head has demonstrated the exact condition the cost guard is designed to classify: multiple Vercel contexts are attached to one revision, two contexts currently report successful deployment status while three redundant contexts report `build-rate-limit`. That combination is `COST_PRESSURE`, not proof of an application build failure.
 
-The controller therefore treats this as build-capacity/cost-governance evidence. It does not automatically upgrade Vercel, delete projects, disconnect Git integrations or choose a production deployment. Those actions require explicit ownership confirmation and approval because removing the wrong integration could remove the authoritative deployment path.
+The controller does not automatically upgrade Vercel, delete projects, disconnect Git integrations or choose a production deployment. Those actions require explicit ownership confirmation and approval because removing the wrong integration could remove the authoritative deployment path.
 
 ## Security boundaries
 
