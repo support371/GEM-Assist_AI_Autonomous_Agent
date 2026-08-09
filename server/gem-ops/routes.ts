@@ -27,6 +27,21 @@ interface PublicSummary {
   message?: string;
 }
 
+interface CostGuardSummary {
+  schemaVersion?: number;
+  generatedAt?: string | null;
+  overallState?: string;
+  repositoriesChecked?: number;
+  requestsUsed?: number;
+  totals?: {
+    vercelContexts?: number;
+    rateLimitedContexts?: number;
+    duplicateContexts?: number;
+  };
+  automaticUpgradeAllowed?: boolean;
+  message?: string;
+}
+
 interface RemediationSummary {
   schemaVersion?: number;
   generatedAt?: string | null;
@@ -65,6 +80,14 @@ function publicSummaryPath(): string {
 
 function detailedReportPath(): string {
   return outputFile("latest.json");
+}
+
+function costGuardSummaryPath(): string {
+  return outputFile("cost-guard-summary.json");
+}
+
+function costGuardDetailsPath(): string {
+  return outputFile("cost-guard.json");
 }
 
 function remediationSummaryPath(): string {
@@ -107,6 +130,7 @@ async function getCapabilities() {
     pcIndependent: true,
     liveMutationEnabled: false,
     remediationAuthority: "PREPARE_ONLY",
+    automaticPaidUpgradeAllowed: false,
     remoteRefreshEnabled: process.env.GEM_OPS_ALLOW_REFRESH === "true",
     authenticatedDetailEnabled: Boolean(process.env.GEM_OPS_DASHBOARD_TOKEN),
     providers: {
@@ -119,10 +143,13 @@ async function getCapabilities() {
       http: config?.httpTargets?.length ?? 0,
       repositories: config?.repositories?.length ?? 0,
       vercelProjects: config?.vercel?.projects?.length ?? 0,
+      maxRemoteRequestsPerRun: config?.policy?.maxRemoteRequestsPerRun ?? 40,
+      maxCostGuardRequestsPerRun: config?.policy?.maxCostGuardRequestsPerRun ?? 10,
     },
     guardrails: [
       "no automatic merge",
       "no automatic deployment",
+      "no automatic paid upgrade",
       "no secret rotation",
       "no DNS mutation",
       "no database mutation",
@@ -180,9 +207,11 @@ async function runFixedScript(script: string): Promise<{ code: number; stderr: s
   });
 }
 
-async function runFixedSentinelAndPlanner(): Promise<{ code: number; stderr: string }> {
+async function runFixedControllerCycle(): Promise<{ code: number; stderr: string }> {
   const sentinel = await runFixedScript("scripts/gem-ops-sentinel.mjs");
   if (sentinel.code !== 0) return sentinel;
+  const costGuard = await runFixedScript("scripts/gem-ops-cost-guard.mjs");
+  if (costGuard.code !== 0) return costGuard;
   const planner = await runFixedScript("scripts/gem-ops-remediation-plan.mjs");
   if (planner.code !== 0) return planner;
   return { code: 0, stderr: "" };
@@ -208,6 +237,24 @@ export function registerGemOpsRoutes(app: Express): void {
         remoteRequests: 0,
         billingGuard: "never-provision-paid-resources",
         message: "No local sentinel report exists yet. The controller remains fail-closed until a report is generated.",
+      });
+    }
+    return res.json(summary);
+  });
+
+  app.get("/api/ops/cost-summary", async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const summary = await readJson<CostGuardSummary>(costGuardSummaryPath());
+    if (!summary) {
+      return res.json({
+        schemaVersion: 1,
+        generatedAt: null,
+        overallState: "NOT_INITIALIZED",
+        repositoriesChecked: 0,
+        requestsUsed: 0,
+        totals: { vercelContexts: 0, rateLimitedContexts: 0, duplicateContexts: 0 },
+        automaticUpgradeAllowed: false,
+        message: "No build-cost guard report exists yet.",
       });
     }
     return res.json(summary);
@@ -244,6 +291,20 @@ export function registerGemOpsRoutes(app: Express): void {
     return res.json(report);
   });
 
+  app.get("/api/ops/cost-details", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!requireOpsToken(req, res)) return;
+
+    const report = await readJson<Record<string, unknown>>(costGuardDetailsPath());
+    if (!report) {
+      return res.status(404).json({
+        error: "Not initialized",
+        message: "No detailed GEM build-cost guard report exists in this runtime.",
+      });
+    }
+    return res.json(report);
+  });
+
   app.get("/api/ops/remediation-details", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!requireOpsToken(req, res)) return;
@@ -269,7 +330,7 @@ export function registerGemOpsRoutes(app: Express): void {
     if (!requireOpsToken(req, res)) return;
 
     try {
-      const result = await runFixedSentinelAndPlanner();
+      const result = await runFixedControllerCycle();
       if (result.code !== 0) {
         return res.status(502).json({
           error: "Controller refresh failed",
@@ -278,11 +339,12 @@ export function registerGemOpsRoutes(app: Express): void {
         });
       }
 
-      const [summary, remediation] = await Promise.all([
+      const [summary, cost, remediation] = await Promise.all([
         readJson<PublicSummary>(publicSummaryPath()),
+        readJson<CostGuardSummary>(costGuardSummaryPath()),
         readJson<RemediationSummary>(remediationSummaryPath()),
       ]);
-      return res.json({ ok: true, summary, remediation });
+      return res.json({ ok: true, summary, cost, remediation });
     } catch (error) {
       return res.status(500).json({
         error: "Controller refresh failed",
