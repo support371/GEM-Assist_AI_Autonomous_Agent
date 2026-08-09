@@ -5,7 +5,8 @@ import process from "node:process";
 
 const CONFIG_PATH = process.env.GEM_OPS_CONFIG || "config/gem-ops.targets.json";
 const OUTPUT_DIR = process.env.GEM_OPS_OUTPUT_DIR || "artifacts/gem-ops";
-const USER_AGENT = "GEM-Ops-Cost-Guard/1.0";
+const FIXTURE_PATH = process.env.GEM_OPS_COST_GUARD_FIXTURE || "";
+const USER_AGENT = "GEM-Ops-Cost-Guard/1.1";
 const DEFAULT_BUDGET = 10;
 
 let requests = 0;
@@ -93,6 +94,7 @@ function overallState(results) {
   if (results.some((r) => r.state === "BUILD_FAILURE")) return "BUILD_FAILURE";
   if (results.some((r) => r.state === "COST_PRESSURE")) return "COST_PRESSURE";
   if (results.some((r) => r.state === "DUPLICATE_BUILD_SURFACE")) return "DUPLICATE_BUILD_SURFACE";
+  if (results.some((r) => r.state === "INSPECTION_LIMITED")) return "INSPECTION_LIMITED";
   return "HEALTHY";
 }
 
@@ -139,39 +141,57 @@ function markdown(report) {
   return lines.join("\n");
 }
 
+function limitedResult(repoName, error) {
+  return {
+    repository: repoName,
+    revision: null,
+    state: "INSPECTION_LIMITED",
+    vercelContexts: 0,
+    successfulContexts: 0,
+    failedContexts: 0,
+    pendingContexts: 0,
+    rateLimitedContexts: 0,
+    duplicateContexts: 0,
+    contexts: [],
+    finding: error instanceof Error ? error.message : String(error),
+    recommendation: "Keep the cost guard fail-closed and avoid broadening credentials unless this inspection is operationally necessary.",
+  };
+}
+
 async function main() {
   const config = await readJson(CONFIG_PATH);
   const repositories = (config.repositories || []).filter((r) => r.visibility !== "private");
   const budget = Number(config.policy?.maxCostGuardRequestsPerRun || DEFAULT_BUDGET);
+  const fixture = FIXTURE_PATH ? await readJson(FIXTURE_PATH) : null;
   const results = [];
 
   for (const repo of repositories) {
-    if (requests + 2 > budget) break;
+    if (!fixture && requests + 2 > budget) break;
     const [owner, name] = repo.name.split("/");
     if (!owner || !name) continue;
 
     try {
+      if (fixture) {
+        const entry = fixture.repositories?.[repo.name];
+        if (!entry) {
+          results.push(limitedResult(repo.name, new Error("No deterministic fixture entry for repository")));
+          continue;
+        }
+        results.push(analyzeStatuses(repo.name, entry.revision || "fixture-revision", entry.statuses || []));
+        continue;
+      }
+
       const branchName = repo.branch || "main";
       const branch = await github(`/repos/${owner}/${name}/branches/${encodeURIComponent(branchName)}`, budget);
       const revision = branch.commit?.sha || null;
-      if (!revision) continue;
+      if (!revision) {
+        results.push(limitedResult(repo.name, new Error("Branch revision unavailable")));
+        continue;
+      }
       const status = await github(`/repos/${owner}/${name}/commits/${revision}/status`, budget);
       results.push(analyzeStatuses(repo.name, revision, status.statuses || []));
     } catch (error) {
-      results.push({
-        repository: repo.name,
-        revision: null,
-        state: "INSPECTION_LIMITED",
-        vercelContexts: 0,
-        successfulContexts: 0,
-        failedContexts: 0,
-        pendingContexts: 0,
-        rateLimitedContexts: 0,
-        duplicateContexts: 0,
-        contexts: [],
-        finding: error instanceof Error ? error.message : String(error),
-        recommendation: "Keep the cost guard fail-closed and avoid broadening credentials unless this inspection is operationally necessary.",
-      });
+      results.push(limitedResult(repo.name, error));
     }
   }
 
@@ -181,6 +201,7 @@ async function main() {
     overallState: overallState(results),
     requestBudget: budget,
     requestsUsed: requests,
+    fixtureMode: Boolean(fixture),
     automaticPaidUpgradeAllowed: false,
     billingPolicy: "never-provision-paid-resources",
     totals: {
