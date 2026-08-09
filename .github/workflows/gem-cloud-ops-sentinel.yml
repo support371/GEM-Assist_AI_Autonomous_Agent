@@ -35,14 +35,10 @@ jobs:
           node --check scripts/gem-ops-remediation-plan.mjs
           node --check scripts/gem-ops-release-readiness.mjs
           node --check scripts/gem-ops-history.mjs
+          node --check scripts/gem-ops-audit-ledger.mjs
 
       - name: Run deterministic controller tests
-        run: |
-          node tests/gem-ops-sentinel.smoke.mjs
-          node tests/gem-ops-cost-guard.smoke.mjs
-          node tests/gem-ops-remediation-plan.smoke.mjs
-          node tests/gem-ops-release-readiness.smoke.mjs
-          node tests/gem-ops-history.smoke.mjs
+        run: npm run ops:test
 
       - name: Restore previous controller state
         id: cache-restore
@@ -117,6 +113,17 @@ jobs:
           node scripts/gem-ops-history.mjs > artifacts/gem-ops/history-console.log 2>&1
           echo "Bounded controller history updated without external requests."
 
+      - name: Append hash-linked audit event
+        if: always()
+        env:
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+          GEM_OPS_AUDIT_LEDGER: .gem-ops-cache/audit-ledger.json
+          GEM_OPS_AUDIT_LIMIT: "90"
+        shell: bash
+        run: |
+          node scripts/gem-ops-audit-ledger.mjs > artifacts/gem-ops/audit-console.log 2>&1
+          echo "Hash-linked controller audit state evaluated without external requests."
+
       - name: Publish private operational summary
         if: always() && github.event.repository.private == true
         shell: bash
@@ -138,6 +145,9 @@ jobs:
           fi
           if [ -f artifacts/gem-ops/history-summary.json ]; then
             node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/history-summary.json","utf8"));console.log(`\n## Operational trend\n- **Trend:** ${r.trend}\n- **Runs retained:** ${r.retainedRuns}\n- **Latest release state:** ${r.latest?.releaseState || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/audit-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/audit-summary.json","utf8"));console.log(`\n## Audit integrity\n- **Integrity:** ${r.integrity}\n- **Events:** ${r.eventCount}\n- **Head:** ${r.headHash || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Publish public-safe operational summary
@@ -161,6 +171,9 @@ jobs:
           fi
           if [ -f artifacts/gem-ops/history-summary.json ]; then
             node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/history-summary.json","utf8"));console.log(`\n## Operational trend\n- **Trend:** ${r.trend}\n- **Runs retained:** ${r.retainedRuns}\n- **Latest operational state:** ${r.latest?.operationalState || "NOT_AVAILABLE"}\n- **Latest release state:** ${r.latest?.releaseState || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/audit-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/audit-summary.json","utf8"));console.log(`\n## Audit integrity\n- **Integrity:** ${r.integrity}\n- **Events:** ${r.eventCount}\n- **Head:** ${r.headHash || "NOT_AVAILABLE"}\n- **Detailed ledger:** protected`)' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload detailed sentinel report
