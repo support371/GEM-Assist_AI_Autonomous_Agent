@@ -34,6 +34,21 @@ type OpsSummary = {
   message?: string;
 };
 
+type CostGuardSummary = {
+  schemaVersion: number;
+  generatedAt: string | null;
+  overallState: string;
+  repositoriesChecked: number;
+  requestsUsed: number;
+  totals: {
+    vercelContexts: number;
+    rateLimitedContexts: number;
+    duplicateContexts: number;
+  };
+  automaticUpgradeAllowed: boolean;
+  message?: string;
+};
+
 type RemediationSummary = {
   schemaVersion: number;
   generatedAt: string | null;
@@ -55,6 +70,7 @@ type OpsCapabilities = {
   pcIndependent: boolean;
   liveMutationEnabled: boolean;
   remediationAuthority: string;
+  automaticPaidUpgradeAllowed: boolean;
   remoteRefreshEnabled: boolean;
   authenticatedDetailEnabled: boolean;
   providers: {
@@ -67,6 +83,8 @@ type OpsCapabilities = {
     http: number;
     repositories: number;
     vercelProjects: number;
+    maxRemoteRequestsPerRun: number;
+    maxCostGuardRequestsPerRun: number;
   };
   guardrails: string[];
 };
@@ -91,6 +109,7 @@ export default function OpsScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const [summary, setSummary] = useState<OpsSummary | null>(null);
+  const [costGuard, setCostGuard] = useState<CostGuardSummary | null>(null);
   const [remediation, setRemediation] = useState<RemediationSummary | null>(null);
   const [capabilities, setCapabilities] = useState<OpsCapabilities | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,19 +121,26 @@ export default function OpsScreen() {
     setError(null);
     try {
       const base = getApiUrl();
-      const [summaryResponse, remediationResponse, capabilitiesResponse] = await Promise.all([
+      const [summaryResponse, costResponse, remediationResponse, capabilitiesResponse] = await Promise.all([
         fetch(new URL("/api/ops/summary", base), { credentials: "include" }),
+        fetch(new URL("/api/ops/cost-summary", base), { credentials: "include" }),
         fetch(new URL("/api/ops/remediation-summary", base), { credentials: "include" }),
         fetch(new URL("/api/ops/capabilities", base), { credentials: "include" }),
       ]);
 
-      if (!summaryResponse.ok || !remediationResponse.ok || !capabilitiesResponse.ok) {
+      if (
+        !summaryResponse.ok ||
+        !costResponse.ok ||
+        !remediationResponse.ok ||
+        !capabilitiesResponse.ok
+      ) {
         throw new Error(
-          `Operations API unavailable (${summaryResponse.status}/${remediationResponse.status}/${capabilitiesResponse.status})`,
+          `Operations API unavailable (${summaryResponse.status}/${costResponse.status}/${remediationResponse.status}/${capabilitiesResponse.status})`,
         );
       }
 
       setSummary((await summaryResponse.json()) as OpsSummary);
+      setCostGuard((await costResponse.json()) as CostGuardSummary);
       setRemediation((await remediationResponse.json()) as RemediationSummary);
       setCapabilities((await capabilitiesResponse.json()) as OpsCapabilities);
     } catch (caught) {
@@ -142,6 +168,22 @@ export default function OpsScreen() {
         return theme.textSecondary;
     }
   }, [summary?.overallState, theme]);
+
+  const costColor = useMemo(() => {
+    switch (costGuard?.overallState) {
+      case "HEALTHY":
+        return theme.success;
+      case "DUPLICATE_BUILD_SURFACE":
+      case "COST_PRESSURE":
+      case "INSPECTION_LIMITED":
+        return theme.warning;
+      case "CAPACITY_BLOCKED":
+      case "BUILD_FAILURE":
+        return theme.error;
+      default:
+        return theme.textSecondary;
+    }
+  }, [costGuard?.overallState, theme]);
 
   const counts = summary?.counts || emptyCounts;
   const remediationCounts = remediation?.counts || emptyRemediationCounts;
@@ -256,6 +298,36 @@ export default function OpsScreen() {
         </>
       ) : null}
 
+      {costGuard ? (
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.backgroundDefault, borderColor: theme.border },
+          ]}
+        >
+          <View style={styles.inlineRow}>
+            <Feather name="dollar-sign" size={18} color={costColor} />
+            <ThemedText type="h4" style={{ color: costColor }}>
+              Build-cost guard — {costGuard.overallState.replace(/_/g, " ")}
+            </ThemedText>
+          </View>
+          <InfoRow label="Repositories checked" value={String(costGuard.repositoriesChecked)} />
+          <InfoRow label="Guard requests" value={String(costGuard.requestsUsed)} />
+          <InfoRow label="Vercel contexts" value={String(costGuard.totals.vercelContexts)} />
+          <InfoRow label="Duplicate contexts" value={String(costGuard.totals.duplicateContexts)} />
+          <InfoRow label="Rate-limited contexts" value={String(costGuard.totals.rateLimitedContexts)} />
+          <InfoRow
+            label="Automatic paid upgrade"
+            value={costGuard.automaticUpgradeAllowed ? "Allowed" : "Forbidden"}
+          />
+          {costGuard.message ? (
+            <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              {costGuard.message}
+            </ThemedText>
+          ) : null}
+        </View>
+      ) : null}
+
       {remediation ? (
         <View
           style={[
@@ -298,6 +370,10 @@ export default function OpsScreen() {
             />
             <InfoRow label="Remediation authority" value={capabilities.remediationAuthority} />
             <InfoRow
+              label="Paid upgrade authority"
+              value={capabilities.automaticPaidUpgradeAllowed ? "Enabled" : "Locked"}
+            />
+            <InfoRow
               label="Remote refresh"
               value={capabilities.remoteRefreshEnabled ? "Protected / enabled" : "Disabled"}
             />
@@ -308,6 +384,14 @@ export default function OpsScreen() {
                   capabilities.configuredChecks.repositories +
                   capabilities.configuredChecks.vercelProjects,
               )}
+            />
+            <InfoRow
+              label="Sentinel request ceiling"
+              value={String(capabilities.configuredChecks.maxRemoteRequestsPerRun)}
+            />
+            <InfoRow
+              label="Cost-guard request ceiling"
+              value={String(capabilities.configuredChecks.maxCostGuardRequestsPerRun)}
             />
           </View>
 
