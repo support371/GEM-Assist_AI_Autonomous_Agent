@@ -7,6 +7,7 @@ import path from "node:path";
 const DEFAULT_CONFIG_PATH = "config/gem-ops.targets.json";
 const DEFAULT_OUTPUT_DIR = "artifacts/gem-ops";
 const DEFAULT_PREVIOUS_STATE = ".gem-ops-cache/latest.json";
+const DEFAULT_HISTORY_STATE = ".gem-ops-cache/history.json";
 const REFRESH_TIMEOUT_MS = 30_000;
 
 interface PublicSummary {
@@ -73,6 +74,30 @@ interface ReleaseReadinessSummary {
   message?: string;
 }
 
+interface HistoryEntrySummary {
+  generatedAt?: string;
+  operationalState?: string;
+  costState?: string;
+  releaseState?: string;
+  failed?: number;
+  degraded?: number;
+  rateLimitedContexts?: number;
+  duplicateContexts?: number;
+  p0?: number;
+  p1?: number;
+}
+
+interface HistorySummary {
+  schemaVersion?: number;
+  updatedAt?: string | null;
+  retainedRuns?: number;
+  publicWindow?: number;
+  trend?: string;
+  latest?: HistoryEntrySummary | null;
+  recent?: HistoryEntrySummary[];
+  message?: string;
+}
+
 async function readJson<T>(filePath: string): Promise<T | null> {
   try {
     return JSON.parse(await fs.readFile(filePath, "utf8")) as T;
@@ -86,6 +111,13 @@ function outputFile(name: string): string {
     process.cwd(),
     process.env.GEM_OPS_OUTPUT_DIR || DEFAULT_OUTPUT_DIR,
     name,
+  );
+}
+
+function historyStatePath(): string {
+  return path.resolve(
+    process.cwd(),
+    process.env.GEM_OPS_HISTORY || DEFAULT_HISTORY_STATE,
   );
 }
 
@@ -121,6 +153,10 @@ function releaseReadinessDetailsPath(): string {
   return outputFile("release-readiness.json");
 }
 
+function historySummaryPath(): string {
+  return outputFile("history-summary.json");
+}
+
 function secureTokenMatches(request: Request): boolean {
   const expected = process.env.GEM_OPS_DASHBOARD_TOKEN;
   const supplied = request.header("x-gem-ops-token");
@@ -154,6 +190,7 @@ async function getCapabilities() {
     liveMutationEnabled: false,
     remediationAuthority: "PREPARE_ONLY",
     releaseDecisionAuthority: "ADVISE_ONLY",
+    historyRetentionRuns: 30,
     automaticPaidUpgradeAllowed: false,
     remoteRefreshEnabled: process.env.GEM_OPS_ALLOW_REFRESH === "true",
     authenticatedDetailEnabled: Boolean(process.env.GEM_OPS_DASHBOARD_TOKEN),
@@ -194,6 +231,7 @@ async function runFixedScript(script: string): Promise<{ code: number; stderr: s
         GEM_OPS_OUTPUT_DIR: process.env.GEM_OPS_OUTPUT_DIR || DEFAULT_OUTPUT_DIR,
         GEM_OPS_PREVIOUS_STATE:
           process.env.GEM_OPS_PREVIOUS_STATE || DEFAULT_PREVIOUS_STATE,
+        GEM_OPS_HISTORY: process.env.GEM_OPS_HISTORY || DEFAULT_HISTORY_STATE,
       },
       stdio: ["ignore", "ignore", "pipe"],
     });
@@ -240,6 +278,8 @@ async function runFixedControllerCycle(): Promise<{ code: number; stderr: string
   if (planner.code !== 0) return planner;
   const readiness = await runFixedScript("scripts/gem-ops-release-readiness.mjs");
   if (readiness.code !== 0) return readiness;
+  const history = await runFixedScript("scripts/gem-ops-history.mjs");
+  if (history.code !== 0) return history;
   return { code: 0, stderr: "" };
 }
 
@@ -325,16 +365,31 @@ export function registerGemOpsRoutes(app: Express): void {
     return res.json(summary);
   });
 
+  app.get("/api/ops/history", async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const summary = await readJson<HistorySummary>(historySummaryPath());
+    if (!summary) {
+      return res.json({
+        schemaVersion: 1,
+        updatedAt: null,
+        retainedRuns: 0,
+        publicWindow: 7,
+        trend: "NOT_INITIALIZED",
+        latest: null,
+        recent: [],
+        message: "No bounded operations history exists yet.",
+      });
+    }
+    return res.json(summary);
+  });
+
   app.get("/api/ops/details", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (!requireOpsToken(req, res)) return;
 
     const report = await readJson<Record<string, unknown>>(detailedReportPath());
     if (!report) {
-      return res.status(404).json({
-        error: "Not initialized",
-        message: "No detailed GEM operations report exists in this runtime.",
-      });
+      return res.status(404).json({ error: "Not initialized", message: "No detailed GEM operations report exists in this runtime." });
     }
     return res.json(report);
   });
@@ -345,10 +400,7 @@ export function registerGemOpsRoutes(app: Express): void {
 
     const report = await readJson<Record<string, unknown>>(costGuardDetailsPath());
     if (!report) {
-      return res.status(404).json({
-        error: "Not initialized",
-        message: "No detailed GEM build-cost guard report exists in this runtime.",
-      });
+      return res.status(404).json({ error: "Not initialized", message: "No detailed GEM build-cost guard report exists in this runtime." });
     }
     return res.json(report);
   });
@@ -359,10 +411,7 @@ export function registerGemOpsRoutes(app: Express): void {
 
     const plan = await readJson<Record<string, unknown>>(remediationPlanPath());
     if (!plan) {
-      return res.status(404).json({
-        error: "Not initialized",
-        message: "No detailed GEM remediation plan exists in this runtime.",
-      });
+      return res.status(404).json({ error: "Not initialized", message: "No detailed GEM remediation plan exists in this runtime." });
     }
     return res.json(plan);
   });
@@ -373,12 +422,20 @@ export function registerGemOpsRoutes(app: Express): void {
 
     const report = await readJson<Record<string, unknown>>(releaseReadinessDetailsPath());
     if (!report) {
-      return res.status(404).json({
-        error: "Not initialized",
-        message: "No detailed GEM release-readiness report exists in this runtime.",
-      });
+      return res.status(404).json({ error: "Not initialized", message: "No detailed GEM release-readiness report exists in this runtime." });
     }
     return res.json(report);
+  });
+
+  app.get("/api/ops/history-details", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!requireOpsToken(req, res)) return;
+
+    const history = await readJson<Record<string, unknown>>(historyStatePath());
+    if (!history) {
+      return res.status(404).json({ error: "Not initialized", message: "No detailed GEM operations history exists in this runtime." });
+    }
+    return res.json(history);
   });
 
   app.post("/api/ops/refresh", async (req, res) => {
@@ -394,20 +451,17 @@ export function registerGemOpsRoutes(app: Express): void {
     try {
       const result = await runFixedControllerCycle();
       if (result.code !== 0) {
-        return res.status(502).json({
-          error: "Controller refresh failed",
-          exitCode: result.code,
-          stderr: result.stderr,
-        });
+        return res.status(502).json({ error: "Controller refresh failed", exitCode: result.code, stderr: result.stderr });
       }
 
-      const [summary, cost, remediation, readiness] = await Promise.all([
+      const [summary, cost, remediation, readiness, history] = await Promise.all([
         readJson<PublicSummary>(publicSummaryPath()),
         readJson<CostGuardSummary>(costGuardSummaryPath()),
         readJson<RemediationSummary>(remediationSummaryPath()),
         readJson<ReleaseReadinessSummary>(releaseReadinessSummaryPath()),
+        readJson<HistorySummary>(historySummaryPath()),
       ]);
-      return res.json({ ok: true, summary, cost, remediation, readiness });
+      return res.json({ ok: true, summary, cost, remediation, readiness, history });
     } catch (error) {
       return res.status(500).json({
         error: "Controller refresh failed",
