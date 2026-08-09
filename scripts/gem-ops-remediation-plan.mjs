@@ -5,14 +5,23 @@ import process from "node:process";
 
 const REPORT_PATH = process.env.GEM_OPS_REPORT || "artifacts/gem-ops/latest.json";
 const OUTPUT_DIR = process.env.GEM_OPS_OUTPUT_DIR || "artifacts/gem-ops";
+const COST_GUARD_PATH = process.env.GEM_OPS_COST_GUARD_REPORT || path.join(OUTPUT_DIR, "cost-guard.json");
 
 const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4 };
 
-async function readReport() {
+async function readRequiredReport() {
   try {
     return JSON.parse(await fs.readFile(REPORT_PATH, "utf8"));
   } catch (error) {
     throw new Error(`Unable to read GEM operations report at ${REPORT_PATH}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function readOptionalJson(file) {
+  try {
+    return JSON.parse(await fs.readFile(file, "utf8"));
+  } catch {
+    return null;
   }
 }
 
@@ -23,6 +32,14 @@ function priorityFor(item) {
   if (item.state === "degraded" && ["critical", "high"].includes(item.criticality)) return "P1";
   if (item.state === "degraded") return "P2";
   if (item.state === "skipped") return "P3";
+  return "P4";
+}
+
+function costPriority(state) {
+  if (state === "BUILD_FAILURE") return "P1";
+  if (state === "CAPACITY_BLOCKED") return "P2";
+  if (state === "COST_PRESSURE") return "P2";
+  if (["DUPLICATE_BUILD_SURFACE", "INSPECTION_LIMITED"].includes(state)) return "P3";
   return "P4";
 }
 
@@ -78,6 +95,7 @@ function createTask(item, index) {
   return {
     id: `GEM-OPS-${String(index + 1).padStart(3, "0")}`,
     priority,
+    category: "operational",
     state: item.state,
     criticality: item.criticality,
     source: { kind: item.kind, id: item.id, name: item.name },
@@ -99,6 +117,51 @@ function createTask(item, index) {
   };
 }
 
+function createCostTask(item, index) {
+  return {
+    id: `GEM-COST-${String(index + 1).padStart(3, "0")}`,
+    priority: costPriority(item.state),
+    category: "cost-governance",
+    state: item.state,
+    criticality: item.state === "BUILD_FAILURE" ? "high" : "medium",
+    source: {
+      kind: "build-cost",
+      id: item.repository,
+      name: item.repository,
+    },
+    owner: "Deployment Cost Governance",
+    evidence: item.finding,
+    objective: "Reduce avoidable build/deployment consumption without purchasing capacity or weakening release controls.",
+    containment: [
+      "Do not upgrade a plan or purchase build capacity automatically.",
+      "Identify which deployment context is authoritative and which contexts are redundant.",
+      "Preserve at least one validated deployment path before any integration cleanup is approved.",
+    ],
+    safeAutomaticWork: [
+      "read commit status contexts",
+      "count successful, failed, duplicate and rate-limited deployment contexts",
+      "map each context to its repository revision",
+      "prepare a duplicate-integration cleanup plan",
+      "estimate which retries can be avoided",
+    ],
+    approvalRequiredFor: [
+      "disconnecting a Vercel/Git integration",
+      "deleting a deployment project",
+      "changing a production project linkage",
+      "upgrading or purchasing a paid plan",
+      "manual redeploy or rollback",
+    ],
+    executionAuthority: "PREPARE_ONLY",
+    metrics: {
+      vercelContexts: item.vercelContexts,
+      successfulContexts: item.successfulContexts,
+      failedContexts: item.failedContexts,
+      rateLimitedContexts: item.rateLimitedContexts,
+      duplicateContexts: item.duplicateContexts,
+    },
+  };
+}
+
 function summarizePriorities(tasks) {
   const counts = { P0: 0, P1: 0, P2: 0, P3: 0, P4: 0 };
   for (const task of tasks) counts[task.priority] += 1;
@@ -110,20 +173,23 @@ function markdown(plan) {
     "# GEM Operations Remediation Plan",
     "",
     `- **Generated:** ${plan.generatedAt}`,
-    `- **Source state:** ${plan.sourceOverallState}`,
+    `- **Operational source state:** ${plan.sourceOverallState}`,
+    `- **Build-cost state:** ${plan.sourceCostState}`,
     `- **Open tasks:** ${plan.tasks.length}`,
+    `- **Cost-governance tasks:** ${plan.costTaskCount}`,
     `- **Execution authority:** PREPARE_ONLY`,
     "",
   ];
 
   if (!plan.tasks.length) {
-    lines.push("No degraded, failed, or access-limited targets require remediation planning.", "");
+    lines.push("No degraded, failed, access-limited, or cost-governance targets require remediation planning.", "");
   }
 
   for (const task of plan.tasks) {
     lines.push(
       `## ${task.priority} — ${task.source.name}`,
       "",
+      `- **Category:** ${task.category}`,
       `- **State:** ${task.state}`,
       `- **Owner:** ${task.owner}`,
       `- **Evidence:** ${task.evidence}`,
@@ -142,33 +208,43 @@ function markdown(plan) {
 }
 
 async function main() {
-  const report = await readReport();
+  const report = await readRequiredReport();
+  const costGuard = await readOptionalJson(COST_GUARD_PATH);
   const actionable = (report.results || []).filter((item) =>
     ["failed", "degraded", "skipped"].includes(item.state),
   );
+  const costActionable = (costGuard?.results || []).filter((item) => item.state !== "HEALTHY");
 
-  const tasks = actionable
-    .map(createTask)
+  const operationalTasks = actionable.map(createTask);
+  const costTasks = costActionable.map(createCostTask);
+  const tasks = [...operationalTasks, ...costTasks]
     .sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority]);
   const priorityCounts = summarizePriorities(tasks);
 
   const plan = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     sourceGeneratedAt: report.generatedAt || null,
     sourceOverallState: report.overallState || "UNKNOWN",
+    sourceCostState: costGuard?.overallState || "NOT_AVAILABLE",
     executionAuthority: "PREPARE_ONLY",
     destructiveActionsAllowed: false,
+    paidResourceActivationAllowed: false,
     priorityCounts,
+    operationalTaskCount: operationalTasks.length,
+    costTaskCount: costTasks.length,
     tasks,
   };
 
   const publicSummary = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: plan.generatedAt,
     sourceOverallState: plan.sourceOverallState,
+    sourceCostState: plan.sourceCostState,
     executionAuthority: plan.executionAuthority,
     totalTasks: tasks.length,
+    operationalTasks: operationalTasks.length,
+    costTasks: costTasks.length,
     counts: priorityCounts,
   };
 
