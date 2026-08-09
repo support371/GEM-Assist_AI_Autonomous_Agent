@@ -46,8 +46,11 @@ interface RemediationSummary {
   schemaVersion?: number;
   generatedAt?: string | null;
   sourceOverallState?: string;
+  sourceCostState?: string;
   executionAuthority?: string;
   totalTasks?: number;
+  operationalTasks?: number;
+  costTasks?: number;
   counts?: {
     P0?: number;
     P1?: number;
@@ -55,6 +58,18 @@ interface RemediationSummary {
     P3?: number;
     P4?: number;
   };
+  message?: string;
+}
+
+interface ReleaseReadinessSummary {
+  schemaVersion?: number;
+  generatedAt?: string | null;
+  state?: string;
+  blockers?: number;
+  warnings?: number;
+  authority?: string;
+  automaticMergeAllowed?: boolean;
+  automaticDeploymentAllowed?: boolean;
   message?: string;
 }
 
@@ -98,6 +113,14 @@ function remediationPlanPath(): string {
   return outputFile("remediation-plan.json");
 }
 
+function releaseReadinessSummaryPath(): string {
+  return outputFile("release-readiness-summary.json");
+}
+
+function releaseReadinessDetailsPath(): string {
+  return outputFile("release-readiness.json");
+}
+
 function secureTokenMatches(request: Request): boolean {
   const expected = process.env.GEM_OPS_DASHBOARD_TOKEN;
   const supplied = request.header("x-gem-ops-token");
@@ -130,6 +153,7 @@ async function getCapabilities() {
     pcIndependent: true,
     liveMutationEnabled: false,
     remediationAuthority: "PREPARE_ONLY",
+    releaseDecisionAuthority: "ADVISE_ONLY",
     automaticPaidUpgradeAllowed: false,
     remoteRefreshEnabled: process.env.GEM_OPS_ALLOW_REFRESH === "true",
     authenticatedDetailEnabled: Boolean(process.env.GEM_OPS_DASHBOARD_TOKEN),
@@ -214,6 +238,8 @@ async function runFixedControllerCycle(): Promise<{ code: number; stderr: string
   if (costGuard.code !== 0) return costGuard;
   const planner = await runFixedScript("scripts/gem-ops-remediation-plan.mjs");
   if (planner.code !== 0) return planner;
+  const readiness = await runFixedScript("scripts/gem-ops-release-readiness.mjs");
+  if (readiness.code !== 0) return readiness;
   return { code: 0, stderr: "" };
 }
 
@@ -265,13 +291,35 @@ export function registerGemOpsRoutes(app: Express): void {
     const summary = await readJson<RemediationSummary>(remediationSummaryPath());
     if (!summary) {
       return res.json({
-        schemaVersion: 1,
+        schemaVersion: 2,
         generatedAt: null,
         sourceOverallState: "NOT_INITIALIZED",
+        sourceCostState: "NOT_INITIALIZED",
         executionAuthority: "PREPARE_ONLY",
         totalTasks: 0,
+        operationalTasks: 0,
+        costTasks: 0,
         counts: { P0: 0, P1: 0, P2: 0, P3: 0, P4: 0 },
         message: "No remediation queue exists yet.",
+      });
+    }
+    return res.json(summary);
+  });
+
+  app.get("/api/ops/release-readiness", async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const summary = await readJson<ReleaseReadinessSummary>(releaseReadinessSummaryPath());
+    if (!summary) {
+      return res.json({
+        schemaVersion: 1,
+        generatedAt: null,
+        state: "NOT_INITIALIZED",
+        blockers: 0,
+        warnings: 0,
+        authority: "ADVISE_ONLY",
+        automaticMergeAllowed: false,
+        automaticDeploymentAllowed: false,
+        message: "No release-readiness decision exists yet.",
       });
     }
     return res.json(summary);
@@ -319,6 +367,20 @@ export function registerGemOpsRoutes(app: Express): void {
     return res.json(plan);
   });
 
+  app.get("/api/ops/release-readiness-details", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!requireOpsToken(req, res)) return;
+
+    const report = await readJson<Record<string, unknown>>(releaseReadinessDetailsPath());
+    if (!report) {
+      return res.status(404).json({
+        error: "Not initialized",
+        message: "No detailed GEM release-readiness report exists in this runtime.",
+      });
+    }
+    return res.json(report);
+  });
+
   app.post("/api/ops/refresh", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     if (process.env.GEM_OPS_ALLOW_REFRESH !== "true") {
@@ -339,12 +401,13 @@ export function registerGemOpsRoutes(app: Express): void {
         });
       }
 
-      const [summary, cost, remediation] = await Promise.all([
+      const [summary, cost, remediation, readiness] = await Promise.all([
         readJson<PublicSummary>(publicSummaryPath()),
         readJson<CostGuardSummary>(costGuardSummaryPath()),
         readJson<RemediationSummary>(remediationSummaryPath()),
+        readJson<ReleaseReadinessSummary>(releaseReadinessSummaryPath()),
       ]);
-      return res.json({ ok: true, summary, cost, remediation });
+      return res.json({ ok: true, summary, cost, remediation, readiness });
     } catch (error) {
       return res.status(500).json({
         error: "Controller refresh failed",
