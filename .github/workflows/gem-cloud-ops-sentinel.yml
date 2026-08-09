@@ -34,6 +34,7 @@ jobs:
           node --check scripts/gem-ops-cost-guard.mjs
           node --check scripts/gem-ops-remediation-plan.mjs
           node --check scripts/gem-ops-release-readiness.mjs
+          node --check scripts/gem-ops-history.mjs
 
       - name: Run deterministic controller tests
         run: |
@@ -41,8 +42,9 @@ jobs:
           node tests/gem-ops-cost-guard.smoke.mjs
           node tests/gem-ops-remediation-plan.smoke.mjs
           node tests/gem-ops-release-readiness.smoke.mjs
+          node tests/gem-ops-history.smoke.mjs
 
-      - name: Restore previous sentinel state
+      - name: Restore previous controller state
         id: cache-restore
         uses: actions/cache/restore@v4
         with:
@@ -103,6 +105,18 @@ jobs:
           node scripts/gem-ops-release-readiness.mjs > artifacts/gem-ops/release-readiness-console.log 2>&1
           echo "Release-readiness advice generated. No merge or deployment was performed."
 
+      - name: Record bounded operational history
+        if: always()
+        env:
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+          GEM_OPS_HISTORY: .gem-ops-cache/history.json
+          GEM_OPS_HISTORY_LIMIT: "30"
+          GEM_OPS_HISTORY_PUBLIC_WINDOW: "7"
+        shell: bash
+        run: |
+          node scripts/gem-ops-history.mjs > artifacts/gem-ops/history-console.log 2>&1
+          echo "Bounded controller history updated without external requests."
+
       - name: Publish private operational summary
         if: always() && github.event.repository.private == true
         shell: bash
@@ -121,6 +135,9 @@ jobs:
           fi
           if [ -f artifacts/gem-ops/release-readiness.md ]; then
             cat artifacts/gem-ops/release-readiness.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/history-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/history-summary.json","utf8"));console.log(`\n## Operational trend\n- **Trend:** ${r.trend}\n- **Runs retained:** ${r.retainedRuns}\n- **Latest release state:** ${r.latest?.releaseState || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Publish public-safe operational summary
@@ -142,6 +159,9 @@ jobs:
           if [ -f artifacts/gem-ops/release-readiness-summary.json ]; then
             node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/release-readiness-summary.json","utf8"));console.log(`\n## Release readiness\n- **Decision:** ${r.state}\n- **Blockers:** ${r.blockers}\n- **Warnings:** ${r.warnings}\n- **Authority:** ${r.authority}\n- **Automatic merge:** ${r.automaticMergeAllowed ? "ALLOWED" : "FORBIDDEN"}\n- **Automatic deploy:** ${r.automaticDeploymentAllowed ? "ALLOWED" : "FORBIDDEN"}`)' >> "$GITHUB_STEP_SUMMARY"
           fi
+          if [ -f artifacts/gem-ops/history-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/history-summary.json","utf8"));console.log(`\n## Operational trend\n- **Trend:** ${r.trend}\n- **Runs retained:** ${r.retainedRuns}\n- **Latest operational state:** ${r.latest?.operationalState || "NOT_AVAILABLE"}\n- **Latest release state:** ${r.latest?.releaseState || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload detailed sentinel report
         if: always() && github.event.repository.private == true
@@ -152,7 +172,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Save current sentinel state
+      - name: Save current controller state
         if: always()
         uses: actions/cache/save@v4
         with:
