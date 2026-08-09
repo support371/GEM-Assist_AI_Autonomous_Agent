@@ -53,8 +53,11 @@ type RemediationSummary = {
   schemaVersion: number;
   generatedAt: string | null;
   sourceOverallState: string;
+  sourceCostState?: string;
   executionAuthority: string;
   totalTasks: number;
+  operationalTasks?: number;
+  costTasks?: number;
   counts: {
     P0: number;
     P1: number;
@@ -65,11 +68,49 @@ type RemediationSummary = {
   message?: string;
 };
 
+type ReleaseReadinessSummary = {
+  schemaVersion: number;
+  generatedAt: string | null;
+  state: string;
+  blockers: number;
+  warnings: number;
+  authority: string;
+  automaticMergeAllowed: boolean;
+  automaticDeploymentAllowed: boolean;
+  message?: string;
+};
+
+type HistoryEntrySummary = {
+  generatedAt?: string;
+  operationalState?: string;
+  costState?: string;
+  releaseState?: string;
+  failed?: number;
+  degraded?: number;
+  rateLimitedContexts?: number;
+  duplicateContexts?: number;
+  p0?: number;
+  p1?: number;
+};
+
+type HistorySummary = {
+  schemaVersion: number;
+  updatedAt: string | null;
+  retainedRuns: number;
+  publicWindow: number;
+  trend: string;
+  latest: HistoryEntrySummary | null;
+  recent: HistoryEntrySummary[];
+  message?: string;
+};
+
 type OpsCapabilities = {
   mode: string;
   pcIndependent: boolean;
   liveMutationEnabled: boolean;
   remediationAuthority: string;
+  releaseDecisionAuthority: string;
+  historyRetentionRuns: number;
   automaticPaidUpgradeAllowed: boolean;
   remoteRefreshEnabled: boolean;
   authenticatedDetailEnabled: boolean;
@@ -111,6 +152,8 @@ export default function OpsScreen() {
   const [summary, setSummary] = useState<OpsSummary | null>(null);
   const [costGuard, setCostGuard] = useState<CostGuardSummary | null>(null);
   const [remediation, setRemediation] = useState<RemediationSummary | null>(null);
+  const [readiness, setReadiness] = useState<ReleaseReadinessSummary | null>(null);
+  const [history, setHistory] = useState<HistorySummary | null>(null);
   const [capabilities, setCapabilities] = useState<OpsCapabilities | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -121,27 +164,46 @@ export default function OpsScreen() {
     setError(null);
     try {
       const base = getApiUrl();
-      const [summaryResponse, costResponse, remediationResponse, capabilitiesResponse] = await Promise.all([
+      const [
+        summaryResponse,
+        costResponse,
+        remediationResponse,
+        readinessResponse,
+        historyResponse,
+        capabilitiesResponse,
+      ] = await Promise.all([
         fetch(new URL("/api/ops/summary", base), { credentials: "include" }),
         fetch(new URL("/api/ops/cost-summary", base), { credentials: "include" }),
         fetch(new URL("/api/ops/remediation-summary", base), { credentials: "include" }),
+        fetch(new URL("/api/ops/release-readiness", base), { credentials: "include" }),
+        fetch(new URL("/api/ops/history", base), { credentials: "include" }),
         fetch(new URL("/api/ops/capabilities", base), { credentials: "include" }),
       ]);
 
+      const statuses = [
+        summaryResponse.status,
+        costResponse.status,
+        remediationResponse.status,
+        readinessResponse.status,
+        historyResponse.status,
+        capabilitiesResponse.status,
+      ];
       if (
         !summaryResponse.ok ||
         !costResponse.ok ||
         !remediationResponse.ok ||
+        !readinessResponse.ok ||
+        !historyResponse.ok ||
         !capabilitiesResponse.ok
       ) {
-        throw new Error(
-          `Operations API unavailable (${summaryResponse.status}/${costResponse.status}/${remediationResponse.status}/${capabilitiesResponse.status})`,
-        );
+        throw new Error(`Operations API unavailable (${statuses.join("/")})`);
       }
 
       setSummary((await summaryResponse.json()) as OpsSummary);
       setCostGuard((await costResponse.json()) as CostGuardSummary);
       setRemediation((await remediationResponse.json()) as RemediationSummary);
+      setReadiness((await readinessResponse.json()) as ReleaseReadinessSummary);
+      setHistory((await historyResponse.json()) as HistorySummary);
       setCapabilities((await capabilitiesResponse.json()) as OpsCapabilities);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load operations status");
@@ -184,6 +246,35 @@ export default function OpsScreen() {
         return theme.textSecondary;
     }
   }, [costGuard?.overallState, theme]);
+
+  const readinessColor = useMemo(() => {
+    switch (readiness?.state) {
+      case "READY_FOR_REVIEW":
+        return theme.success;
+      case "REVIEW_REQUIRED":
+        return theme.warning;
+      case "HOLD":
+        return theme.error;
+      default:
+        return theme.textSecondary;
+    }
+  }, [readiness?.state, theme]);
+
+  const trendColor = useMemo(() => {
+    switch (history?.trend) {
+      case "STABLE":
+      case "RECOVERING":
+        return theme.success;
+      case "MIXED":
+      case "INSUFFICIENT_HISTORY":
+        return theme.warning;
+      case "DETERIORATING":
+      case "PERSISTENT_RISK":
+        return theme.error;
+      default:
+        return theme.textSecondary;
+    }
+  }, [history?.trend, theme]);
 
   const counts = summary?.counts || emptyCounts;
   const remediationCounts = remediation?.counts || emptyRemediationCounts;
@@ -298,6 +389,70 @@ export default function OpsScreen() {
         </>
       ) : null}
 
+      {readiness ? (
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.backgroundDefault, borderColor: theme.border },
+          ]}
+        >
+          <View style={styles.inlineRow}>
+            <Feather name="shield" size={18} color={readinessColor} />
+            <ThemedText type="h4" style={{ color: readinessColor }}>
+              Release readiness — {readiness.state.replace(/_/g, " ")}
+            </ThemedText>
+          </View>
+          <InfoRow label="Blockers" value={String(readiness.blockers)} />
+          <InfoRow label="Warnings" value={String(readiness.warnings)} />
+          <InfoRow label="Decision authority" value={readiness.authority} />
+          <InfoRow
+            label="Automatic merge"
+            value={readiness.automaticMergeAllowed ? "Allowed" : "Forbidden"}
+          />
+          <InfoRow
+            label="Automatic deploy"
+            value={readiness.automaticDeploymentAllowed ? "Allowed" : "Forbidden"}
+          />
+          {readiness.message ? (
+            <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              {readiness.message}
+            </ThemedText>
+          ) : null}
+        </View>
+      ) : null}
+
+      {history ? (
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.backgroundDefault, borderColor: theme.border },
+          ]}
+        >
+          <View style={styles.inlineRow}>
+            <Feather name="trending-up" size={18} color={trendColor} />
+            <ThemedText type="h4" style={{ color: trendColor }}>
+              Operational trend — {history.trend.replace(/_/g, " ")}
+            </ThemedText>
+          </View>
+          <InfoRow label="Runs retained" value={String(history.retainedRuns)} />
+          <InfoRow label="Dashboard window" value={String(history.publicWindow)} />
+          <InfoRow
+            label="Latest operational state"
+            value={history.latest?.operationalState || "Not available"}
+          />
+          <InfoRow label="Latest cost state" value={history.latest?.costState || "Not available"} />
+          <InfoRow
+            label="Latest release state"
+            value={history.latest?.releaseState || "Not available"}
+          />
+          {history.message ? (
+            <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              {history.message}
+            </ThemedText>
+          ) : null}
+        </View>
+      ) : null}
+
       {costGuard ? (
         <View
           style={[
@@ -340,6 +495,8 @@ export default function OpsScreen() {
             <ThemedText type="h4">Remediation queue</ThemedText>
           </View>
           <InfoRow label="Open tasks" value={String(remediation.totalTasks)} />
+          <InfoRow label="Operational tasks" value={String(remediation.operationalTasks || 0)} />
+          <InfoRow label="Cost-governance tasks" value={String(remediation.costTasks || 0)} />
           <InfoRow label="P0 — immediate" value={String(remediationCounts.P0)} />
           <InfoRow label="P1 — high" value={String(remediationCounts.P1)} />
           <InfoRow label="P2 — normal" value={String(remediationCounts.P2)} />
@@ -369,6 +526,7 @@ export default function OpsScreen() {
               value={capabilities.liveMutationEnabled ? "Enabled" : "Locked"}
             />
             <InfoRow label="Remediation authority" value={capabilities.remediationAuthority} />
+            <InfoRow label="Release authority" value={capabilities.releaseDecisionAuthority} />
             <InfoRow
               label="Paid upgrade authority"
               value={capabilities.automaticPaidUpgradeAllowed ? "Enabled" : "Locked"}
@@ -377,6 +535,7 @@ export default function OpsScreen() {
               label="Remote refresh"
               value={capabilities.remoteRefreshEnabled ? "Protected / enabled" : "Disabled"}
             />
+            <InfoRow label="History retention" value={`${capabilities.historyRetentionRuns} runs`} />
             <InfoRow
               label="Configured checks"
               value={String(
