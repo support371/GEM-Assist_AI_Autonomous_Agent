@@ -1,21 +1,9 @@
 name: GEM Cloud Ops Release Gate
 
 on:
-  push:
-    branches:
-      - feat/gem-cloud-ops-controller
-    paths:
-      - "config/gem-ops.targets.json"
-      - "scripts/gem-ops-*.mjs"
-      - "tests/gem-ops-*.mjs"
-      - "server/gem-ops/**"
-      - "server/routes.ts"
-      - "client/screens/OpsScreen.tsx"
-      - "client/navigation/MainTabNavigator.tsx"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/gem-cloud-ops-*.yml"
+  workflow_dispatch:
   pull_request:
+    types: [ready_for_review]
     branches:
       - main
     paths:
@@ -29,7 +17,6 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/gem-cloud-ops-*.yml"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -55,11 +42,13 @@ jobs:
       - name: Validate controller JavaScript syntax
         run: |
           node --check scripts/gem-ops-sentinel.mjs
+          node --check scripts/gem-ops-cost-guard.mjs
           node --check scripts/gem-ops-remediation-plan.mjs
 
       - name: Run deterministic controller smoke tests
         run: |
           node tests/gem-ops-sentinel.smoke.mjs
+          node tests/gem-ops-cost-guard.smoke.mjs
           node tests/gem-ops-remediation-plan.smoke.mjs
 
       - name: Validate JSON inventory
@@ -102,10 +91,12 @@ jobs:
           set -euo pipefail
           test -f server/gem-ops/routes.ts
           test -f scripts/gem-ops-sentinel.mjs
+          test -f scripts/gem-ops-cost-guard.mjs
           test -f scripts/gem-ops-remediation-plan.mjs
           grep -q 'liveMutationEnabled: false' server/gem-ops/routes.ts
           grep -q 'PREPARE_ONLY' scripts/gem-ops-remediation-plan.mjs
           grep -q 'never-provision-paid-resources' config/gem-ops.targets.json
+          grep -q 'automaticPaidUpgradeAllowed: false' scripts/gem-ops-cost-guard.mjs
           if grep -R -n -E 'merge_pull_request|deploy_to_vercel|rotate.*secret|enable.*withdraw|place.*order' server/gem-ops scripts/gem-ops-*.mjs; then
             echo 'Forbidden production-authority implementation detected in GEM controller paths.'
             exit 1
