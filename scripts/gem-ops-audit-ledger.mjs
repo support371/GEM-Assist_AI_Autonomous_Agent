@@ -7,6 +7,7 @@ import process from "node:process";
 const OUTPUT_DIR = process.env.GEM_OPS_OUTPUT_DIR || "artifacts/gem-ops";
 const LEDGER_PATH = process.env.GEM_OPS_AUDIT_LEDGER || ".gem-ops-cache/audit-ledger.json";
 const MAX_EVENTS = Math.max(10, Number(process.env.GEM_OPS_AUDIT_LIMIT || 90));
+const VERIFY_ONLY = process.env.GEM_OPS_AUDIT_VERIFY_ONLY === "true";
 
 async function readOptional(file) {
   try {
@@ -92,7 +93,7 @@ function compactEvent({ ops, cost, remediation, readiness, history, previousHash
   };
 }
 
-function publicSummary({ integrity, events, appended }) {
+function publicSummary({ integrity, events, appended, verifyOnly }) {
   const latest = events.at(-1) || null;
   return {
     schemaVersion: 1,
@@ -100,6 +101,7 @@ function publicSummary({ integrity, events, appended }) {
     integrity: integrity.valid ? "VALID" : "FAILED",
     eventCount: events.length,
     appended,
+    verifyOnly,
     headHash: latest?.eventHash ? latest.eventHash.slice(0, 16) : null,
     failedIndex: integrity.failedIndex,
     failureReason: integrity.reason,
@@ -131,10 +133,17 @@ async function main() {
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
   await fs.mkdir(path.dirname(LEDGER_PATH), { recursive: true });
 
-  if (!integrity.valid) {
-    const summary = publicSummary({ integrity, events: currentEvents, appended: false });
+  if (!integrity.valid || VERIFY_ONLY) {
+    const summary = publicSummary({
+      integrity,
+      events: currentEvents,
+      appended: false,
+      verifyOnly: VERIFY_ONLY,
+    });
     await fs.writeFile(path.join(OUTPUT_DIR, "audit-summary.json"), JSON.stringify(summary, null, 2) + "\n");
-    console.log(`GEM audit ledger integrity FAILED at event ${integrity.failedIndex}: ${integrity.reason}`);
+    console.log(
+      `GEM audit ledger ${summary.integrity}: events=${summary.eventCount}; verifyOnly=${VERIFY_ONLY}`,
+    );
     return;
   }
 
@@ -168,7 +177,12 @@ async function main() {
     maxEvents: MAX_EVENTS,
     events: retained,
   };
-  const summary = publicSummary({ integrity: finalIntegrity, events: retained, appended: !duplicate });
+  const summary = publicSummary({
+    integrity: finalIntegrity,
+    events: retained,
+    appended: !duplicate,
+    verifyOnly: false,
+  });
 
   await fs.writeFile(LEDGER_PATH, JSON.stringify(ledger, null, 2) + "\n");
   await fs.writeFile(path.join(OUTPUT_DIR, "audit-summary.json"), JSON.stringify(summary, null, 2) + "\n");
