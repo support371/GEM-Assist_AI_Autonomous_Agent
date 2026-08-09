@@ -11,6 +11,7 @@ on:
       - "scripts/gem-ops-*.mjs"
       - "tests/gem-ops-*.mjs"
       - "server/gem-ops/**"
+      - "server/index.ts"
       - "server/routes.ts"
       - "client/screens/OpsScreen.tsx"
       - "client/navigation/MainTabNavigator.tsx"
@@ -46,6 +47,7 @@ jobs:
           node --check scripts/gem-ops-remediation-plan.mjs
           node --check scripts/gem-ops-release-readiness.mjs
           node --check scripts/gem-ops-history.mjs
+          node --check scripts/gem-ops-audit-ledger.mjs
 
       - name: Run deterministic controller smoke tests
         run: npm run ops:test
@@ -84,25 +86,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Assert controller remains non-mutating
+      - name: Assert controller remains non-mutating and auditable
         shell: bash
         run: |
           set -euo pipefail
           test -f server/gem-ops/routes.ts
+          test -f server/gem-ops/audit-routes.ts
           test -f scripts/gem-ops-sentinel.mjs
           test -f scripts/gem-ops-cost-guard.mjs
           test -f scripts/gem-ops-remediation-plan.mjs
           test -f scripts/gem-ops-release-readiness.mjs
           test -f scripts/gem-ops-history.mjs
+          test -f scripts/gem-ops-audit-ledger.mjs
           grep -q 'liveMutationEnabled: false' server/gem-ops/routes.ts
           grep -q 'PREPARE_ONLY' scripts/gem-ops-remediation-plan.mjs
           grep -q 'ADVISE_ONLY' scripts/gem-ops-release-readiness.mjs
           grep -q 'mergeAllowedAutomatically: false' scripts/gem-ops-release-readiness.mjs
           grep -q 'deploymentAllowedAutomatically: false' scripts/gem-ops-release-readiness.mjs
+          grep -q 'Audit ledger integrity is FAILED' scripts/gem-ops-release-readiness.mjs
+          grep -q 'GEM_OPS_AUDIT_VERIFY_ONLY' scripts/gem-ops-audit-ledger.mjs
+          grep -q 'timingSafeEqual' server/gem-ops/audit-routes.ts
           grep -q 'never-provision-paid-resources' config/gem-ops.targets.json
           grep -q 'automaticPaidUpgradeAllowed: false' scripts/gem-ops-cost-guard.mjs
           if grep -R -n -E 'merge_pull_request|deploy_to_vercel|rotate.*secret|enable.*withdraw|place.*order' server/gem-ops scripts/gem-ops-*.mjs; then
             echo 'Forbidden production-authority implementation detected in GEM controller paths.'
             exit 1
           fi
-          echo 'Authority audit passed: controller remains inspection/preparation/advice only.'
+          echo 'Authority audit passed: controller remains inspection/preparation/advice only with hash-linked audit integrity.'
