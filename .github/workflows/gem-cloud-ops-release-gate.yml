@@ -1,0 +1,113 @@
+name: GEM Cloud Ops Release Gate
+
+on:
+  push:
+    branches:
+      - feat/gem-cloud-ops-controller
+    paths:
+      - "config/gem-ops.targets.json"
+      - "scripts/gem-ops-*.mjs"
+      - "tests/gem-ops-*.mjs"
+      - "server/gem-ops/**"
+      - "server/routes.ts"
+      - "client/screens/OpsScreen.tsx"
+      - "client/navigation/MainTabNavigator.tsx"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/gem-cloud-ops-*.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "config/gem-ops.targets.json"
+      - "scripts/gem-ops-*.mjs"
+      - "tests/gem-ops-*.mjs"
+      - "server/gem-ops/**"
+      - "server/routes.ts"
+      - "client/screens/OpsScreen.tsx"
+      - "client/navigation/MainTabNavigator.tsx"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/gem-cloud-ops-*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gem-cloud-ops-release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controller-tests:
+    name: Controller deterministic tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate controller JavaScript syntax
+        run: |
+          node --check scripts/gem-ops-sentinel.mjs
+          node --check scripts/gem-ops-remediation-plan.mjs
+
+      - name: Run deterministic controller smoke tests
+        run: |
+          node tests/gem-ops-sentinel.smoke.mjs
+          node tests/gem-ops-remediation-plan.smoke.mjs
+
+      - name: Validate JSON inventory
+        run: node -e 'JSON.parse(require("fs").readFileSync("config/gem-ops.targets.json", "utf8")); console.log("GEM operations inventory JSON is valid")'
+
+  application-contract:
+    name: Application integration contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: TypeScript contract
+        run: npm run check:types
+
+      - name: Build server bundle
+        run: npm run server:build
+
+  authority-audit:
+    name: Production authority audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assert controller remains non-mutating
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f server/gem-ops/routes.ts
+          test -f scripts/gem-ops-sentinel.mjs
+          test -f scripts/gem-ops-remediation-plan.mjs
+          grep -q 'liveMutationEnabled: false' server/gem-ops/routes.ts
+          grep -q 'PREPARE_ONLY' scripts/gem-ops-remediation-plan.mjs
+          grep -q 'never-provision-paid-resources' config/gem-ops.targets.json
+          if grep -R -n -E 'merge_pull_request|deploy_to_vercel|rotate.*secret|enable.*withdraw|place.*order' server/gem-ops scripts/gem-ops-*.mjs; then
+            echo 'Forbidden production-authority implementation detected in GEM controller paths.'
+            exit 1
+          fi
+          echo 'Authority audit passed: controller remains inspection/preparation only.'
