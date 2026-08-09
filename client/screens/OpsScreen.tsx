@@ -104,6 +104,26 @@ type HistorySummary = {
   message?: string;
 };
 
+type AuditSummary = {
+  schemaVersion: number;
+  updatedAt: string | null;
+  integrity: string;
+  eventCount: number;
+  appended: boolean;
+  headHash: string | null;
+  failedIndex: number | null;
+  failureReason: string | null;
+  latest: {
+    sequence?: number;
+    sourceGeneratedAt?: string | null;
+    operationalState?: string;
+    costState?: string;
+    releaseState?: string;
+    trend?: string;
+  } | null;
+  message?: string;
+};
+
 type OpsCapabilities = {
   mode: string;
   pcIndependent: boolean;
@@ -154,6 +174,7 @@ export default function OpsScreen() {
   const [remediation, setRemediation] = useState<RemediationSummary | null>(null);
   const [readiness, setReadiness] = useState<ReleaseReadinessSummary | null>(null);
   const [history, setHistory] = useState<HistorySummary | null>(null);
+  const [audit, setAudit] = useState<AuditSummary | null>(null);
   const [capabilities, setCapabilities] = useState<OpsCapabilities | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -170,6 +191,7 @@ export default function OpsScreen() {
         remediationResponse,
         readinessResponse,
         historyResponse,
+        auditResponse,
         capabilitiesResponse,
       ] = await Promise.all([
         fetch(new URL("/api/ops/summary", base), { credentials: "include" }),
@@ -177,6 +199,7 @@ export default function OpsScreen() {
         fetch(new URL("/api/ops/remediation-summary", base), { credentials: "include" }),
         fetch(new URL("/api/ops/release-readiness", base), { credentials: "include" }),
         fetch(new URL("/api/ops/history", base), { credentials: "include" }),
+        fetch(new URL("/api/ops/audit-summary", base), { credentials: "include" }),
         fetch(new URL("/api/ops/capabilities", base), { credentials: "include" }),
       ]);
 
@@ -186,6 +209,7 @@ export default function OpsScreen() {
         remediationResponse.status,
         readinessResponse.status,
         historyResponse.status,
+        auditResponse.status,
         capabilitiesResponse.status,
       ];
       if (
@@ -194,6 +218,7 @@ export default function OpsScreen() {
         !remediationResponse.ok ||
         !readinessResponse.ok ||
         !historyResponse.ok ||
+        !auditResponse.ok ||
         !capabilitiesResponse.ok
       ) {
         throw new Error(`Operations API unavailable (${statuses.join("/")})`);
@@ -204,6 +229,7 @@ export default function OpsScreen() {
       setRemediation((await remediationResponse.json()) as RemediationSummary);
       setReadiness((await readinessResponse.json()) as ReleaseReadinessSummary);
       setHistory((await historyResponse.json()) as HistorySummary);
+      setAudit((await auditResponse.json()) as AuditSummary);
       setCapabilities((await capabilitiesResponse.json()) as OpsCapabilities);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load operations status");
@@ -275,6 +301,12 @@ export default function OpsScreen() {
         return theme.textSecondary;
     }
   }, [history?.trend, theme]);
+
+  const auditColor = useMemo(() => {
+    if (audit?.integrity === "VALID") return theme.success;
+    if (audit?.integrity === "FAILED") return theme.error;
+    return theme.textSecondary;
+  }, [audit?.integrity, theme]);
 
   const counts = summary?.counts || emptyCounts;
   const remediationCounts = remediation?.counts || emptyRemediationCounts;
@@ -413,11 +445,6 @@ export default function OpsScreen() {
             label="Automatic deploy"
             value={readiness.automaticDeploymentAllowed ? "Allowed" : "Forbidden"}
           />
-          {readiness.message ? (
-            <ThemedText type="small" style={{ color: theme.textSecondary }}>
-              {readiness.message}
-            </ThemedText>
-          ) : null}
         </View>
       ) : null}
 
@@ -445,9 +472,37 @@ export default function OpsScreen() {
             label="Latest release state"
             value={history.latest?.releaseState || "Not available"}
           />
-          {history.message ? (
+        </View>
+      ) : null}
+
+      {audit ? (
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.backgroundDefault, borderColor: theme.border },
+          ]}
+        >
+          <View style={styles.inlineRow}>
+            <Feather name="link" size={18} color={auditColor} />
+            <ThemedText type="h4" style={{ color: auditColor }}>
+              Audit integrity — {audit.integrity.replace(/_/g, " ")}
+            </ThemedText>
+          </View>
+          <InfoRow label="Hash-linked events" value={String(audit.eventCount)} />
+          <InfoRow label="Ledger head" value={audit.headHash || "Not initialized"} />
+          <InfoRow
+            label="Latest sequence"
+            value={audit.latest?.sequence ? String(audit.latest.sequence) : "Not initialized"}
+          />
+          {audit.integrity === "FAILED" ? (
+            <>
+              <InfoRow label="Failed event index" value={String(audit.failedIndex ?? "unknown")} />
+              <InfoRow label="Failure reason" value={audit.failureReason || "unknown"} />
+            </>
+          ) : null}
+          {audit.message ? (
             <ThemedText type="small" style={{ color: theme.textSecondary }}>
-              {history.message}
+              {audit.message}
             </ThemedText>
           ) : null}
         </View>
@@ -475,11 +530,6 @@ export default function OpsScreen() {
             label="Automatic paid upgrade"
             value={costGuard.automaticUpgradeAllowed ? "Allowed" : "Forbidden"}
           />
-          {costGuard.message ? (
-            <ThemedText type="small" style={{ color: theme.textSecondary }}>
-              {costGuard.message}
-            </ThemedText>
-          ) : null}
         </View>
       ) : null}
 
@@ -502,11 +552,6 @@ export default function OpsScreen() {
           <InfoRow label="P2 — normal" value={String(remediationCounts.P2)} />
           <InfoRow label="P3 — access/review" value={String(remediationCounts.P3)} />
           <InfoRow label="Authority" value={remediation.executionAuthority} />
-          {remediation.message ? (
-            <ThemedText type="small" style={{ color: theme.textSecondary }}>
-              {remediation.message}
-            </ThemedText>
-          ) : null}
         </View>
       ) : null}
 
