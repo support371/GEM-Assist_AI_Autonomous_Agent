@@ -33,12 +33,14 @@ jobs:
           node --check scripts/gem-ops-sentinel.mjs
           node --check scripts/gem-ops-cost-guard.mjs
           node --check scripts/gem-ops-remediation-plan.mjs
+          node --check scripts/gem-ops-release-readiness.mjs
 
       - name: Run deterministic controller tests
         run: |
           node tests/gem-ops-sentinel.smoke.mjs
           node tests/gem-ops-cost-guard.smoke.mjs
           node tests/gem-ops-remediation-plan.smoke.mjs
+          node tests/gem-ops-release-readiness.smoke.mjs
 
       - name: Restore previous sentinel state
         id: cache-restore
@@ -94,6 +96,13 @@ jobs:
             echo "No sentinel report exists; remediation planner skipped."
           fi
 
+      - name: Evaluate release readiness
+        if: always()
+        shell: bash
+        run: |
+          node scripts/gem-ops-release-readiness.mjs > artifacts/gem-ops/release-readiness-console.log 2>&1
+          echo "Release-readiness advice generated. No merge or deployment was performed."
+
       - name: Publish private operational summary
         if: always() && github.event.repository.private == true
         shell: bash
@@ -110,6 +119,9 @@ jobs:
           if [ -f artifacts/gem-ops/remediation-plan.md ]; then
             cat artifacts/gem-ops/remediation-plan.md >> "$GITHUB_STEP_SUMMARY"
           fi
+          if [ -f artifacts/gem-ops/release-readiness.md ]; then
+            cat artifacts/gem-ops/release-readiness.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Publish public-safe operational summary
         if: always() && github.event.repository.private != true
@@ -125,7 +137,10 @@ jobs:
             node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/cost-guard-summary.json","utf8"));console.log(`\n## Build-cost guard\n- **State:** ${r.overallState}\n- **Vercel contexts:** ${r.totals.vercelContexts}\n- **Rate-limited:** ${r.totals.rateLimitedContexts}\n- **Duplicate contexts:** ${r.totals.duplicateContexts}\n- **Automatic paid upgrade:** ${r.automaticUpgradeAllowed ? "ALLOWED" : "FORBIDDEN"}`)' >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ -f artifacts/gem-ops/remediation-summary.json ]; then
-            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/remediation-summary.json","utf8"));console.log(`\n## Prepare-only remediation queue\n- **Total:** ${r.totalTasks}\n- **P0:** ${r.counts.P0}\n- **P1:** ${r.counts.P1}\n- **P2:** ${r.counts.P2}\n- **P3:** ${r.counts.P3}\n- **Authority:** ${r.executionAuthority}`)' >> "$GITHUB_STEP_SUMMARY"
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/remediation-summary.json","utf8"));console.log(`\n## Prepare-only remediation queue\n- **Total:** ${r.totalTasks}\n- **P0:** ${r.counts.P0}\n- **P1:** ${r.counts.P1}\n- **P2:** ${r.counts.P2}\n- **P3:** ${r.counts.P3}\n- **Cost tasks:** ${r.costTasks || 0}\n- **Authority:** ${r.executionAuthority}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/release-readiness-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/release-readiness-summary.json","utf8"));console.log(`\n## Release readiness\n- **Decision:** ${r.state}\n- **Blockers:** ${r.blockers}\n- **Warnings:** ${r.warnings}\n- **Authority:** ${r.authority}\n- **Automatic merge:** ${r.automaticMergeAllowed ? "ALLOWED" : "FORBIDDEN"}\n- **Automatic deploy:** ${r.automaticDeploymentAllowed ? "ALLOWED" : "FORBIDDEN"}`)' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload detailed sentinel report
