@@ -93,12 +93,15 @@ assert.match(releaseGateWorkflow, /types: \[ready_for_review\]/);
 assert.match(releaseGateWorkflow, /Production authority audit/);
 assert.match(releaseGateWorkflow, /ADVISE_ONLY/);
 assert.match(releaseGateWorkflow, /PREPARE_ONLY/);
+assert.match(releaseGateWorkflow, /gem-ops-audit-ledger\.mjs/);
+assert.match(releaseGateWorkflow, /Audit ledger integrity is FAILED/);
 
 const pkg = JSON.parse(packageJson);
 for (const script of [
   "ops:check",
   "ops:cost",
   "ops:plan",
+  "ops:audit:verify",
   "ops:readiness",
   "ops:history",
   "ops:audit",
@@ -107,6 +110,8 @@ for (const script of [
 ]) {
   assert.equal(typeof pkg.scripts?.[script], "string", `missing package script ${script}`);
 }
+assert.match(pkg.scripts["ops:audit:verify"], /--verify-only/);
+assert.match(pkg.scripts["ops:all"], /^npm run ops:audit:verify/);
 assert.match(pkg.scripts["ops:all"], /ops:history/);
 assert.match(pkg.scripts["ops:all"], /ops:audit/);
 assert.match(pkg.scripts["ops:test"], /gem-ops-audit-ledger\.smoke\.mjs/);
