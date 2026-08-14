@@ -1,8 +1,12 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { registerRoutes } from "./routes";
-import * as fs from "fs";
-import * as path from "path";
+import { registerGemOpsRoutes } from "./gem-ops/routes";
+import { registerGemOpsAuditRoutes } from "./gem-ops/audit-routes";
+import { registerGemOpsReviewRoutes } from "./gem-ops/review-routes";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 const app = express();
 const log = console.log;
@@ -11,6 +15,19 @@ declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
   }
+}
+
+function setupRequestIdentity(app: express.Application) {
+  app.use((req, res, next) => {
+    const supplied = req.header("x-request-id");
+    const requestId =
+      supplied && /^[A-Za-z0-9._:-]{1,96}$/.test(supplied)
+        ? supplied
+        : randomUUID();
+    res.locals.requestId = requestId;
+    res.setHeader("X-Request-Id", requestId);
+    next();
+  });
 }
 
 function setupCors(app: express.Application) {
@@ -22,32 +39,37 @@ function setupCors(app: express.Application) {
     }
 
     if (process.env.REPLIT_DOMAINS) {
-      process.env.REPLIT_DOMAINS.split(",").forEach((d) => {
-        origins.add(`https://${d.trim()}`);
+      process.env.REPLIT_DOMAINS.split(",").forEach((domain) => {
+        if (domain.trim()) origins.add(`https://${domain.trim()}`);
+      });
+    }
+
+    if (process.env.GEM_ALLOWED_ORIGINS) {
+      process.env.GEM_ALLOWED_ORIGINS.split(",").forEach((origin) => {
+        if (origin.trim()) origins.add(origin.trim().replace(/\/$/, ""));
       });
     }
 
     const origin = req.header("origin");
-
-    // Allow localhost origins for Expo web development (any port)
     const isLocalhost =
       origin?.startsWith("http://localhost:") ||
       origin?.startsWith("http://127.0.0.1:");
 
     if (origin && (origins.has(origin) || isLocalhost)) {
       res.header("Access-Control-Allow-Origin", origin);
+      res.header("Vary", "Origin");
       res.header(
         "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, OPTIONS",
+        "GET, POST, PATCH, PUT, DELETE, OPTIONS",
       );
-      res.header("Access-Control-Allow-Headers", "Content-Type");
+      res.header(
+        "Access-Control-Allow-Headers",
+        "Content-Type, X-GEM-Ops-Token, X-GEM-Agent-Token, X-Request-Id",
+      );
       res.header("Access-Control-Allow-Credentials", "true");
     }
 
-    if (req.method === "OPTIONS") {
-      return res.sendStatus(200);
-    }
-
+    if (req.method === "OPTIONS") return res.sendStatus(204);
     next();
   });
 }
@@ -55,45 +77,58 @@ function setupCors(app: express.Application) {
 function setupBodyParsing(app: express.Application) {
   app.use(
     express.json({
+      limit: "1mb",
       verify: (req, _res, buf) => {
         req.rawBody = buf;
       },
     }),
   );
-
-  app.use(express.urlencoded({ extended: false }));
+  app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 }
 
 function setupRequestLogging(app: express.Application) {
   app.use((req, res, next) => {
-    const start = Date.now();
-    const path = req.path;
-    let capturedJsonResponse: Record<string, unknown> | undefined = undefined;
-
-    const originalResJson = res.json;
-    res.json = function (bodyJson, ...args) {
-      capturedJsonResponse = bodyJson;
-      return originalResJson.apply(res, [bodyJson, ...args]);
-    };
-
+    const startedAt = Date.now();
     res.on("finish", () => {
-      if (!path.startsWith("/api")) return;
-
-      const duration = Date.now() - start;
-
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
+      if (!req.path.startsWith("/api")) return;
+      const duration = Date.now() - startedAt;
+      log(
+        `${req.method} ${req.path} ${res.statusCode} in ${duration}ms requestId=${res.locals.requestId}`,
+      );
     });
-
     next();
+  });
+}
+
+function secureEqual(supplied: string, expected: string): boolean {
+  const left = Buffer.from(supplied);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function setupAgentControlProtection(app: express.Application) {
+  app.use("/api/agent", (req, res, next) => {
+    const pathOnly = req.originalUrl.split("?", 1)[0];
+    if (req.method === "GET" && pathOnly === "/api/agent/tools") return next();
+
+    const expected = process.env.GEM_AGENT_API_TOKEN?.trim();
+    if (!expected) {
+      return res.status(503).json({
+        error: "Agent control plane locked",
+        requestId: res.locals.requestId,
+        message: "GEM_AGENT_API_TOKEN must be configured before queued-agent control routes are exposed.",
+      });
+    }
+
+    const supplied = req.header("x-gem-agent-token") || "";
+    if (!secureEqual(supplied, expected)) {
+      return res.status(401).json({
+        error: "Unauthorized",
+        requestId: res.locals.requestId,
+      });
+    }
+
+    return next();
   });
 }
 
@@ -125,7 +160,6 @@ function serveExpoManifest(platform: string, res: Response) {
   res.setHeader("expo-protocol-version", "1");
   res.setHeader("expo-sfv-version", "0");
   res.setHeader("content-type", "application/json");
-
   const manifest = fs.readFileSync(manifestPath, "utf-8");
   res.send(manifest);
 }
@@ -147,9 +181,6 @@ function serveLandingPage({
   const host = forwardedHost || req.get("host");
   const baseUrl = `${protocol}://${host}`;
   const expsUrl = `${host}`;
-
-  log(`baseUrl`, baseUrl);
-  log(`expsUrl`, expsUrl);
 
   const html = landingPageTemplate
     .replace(/BASE_URL_PLACEHOLDER/g, baseUrl)
@@ -173,13 +204,8 @@ function configureExpoAndLanding(app: express.Application) {
   log("Serving static Expo files with dynamic manifest routing");
 
   app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith("/api")) {
-      return next();
-    }
-
-    if (req.path !== "/" && req.path !== "/manifest") {
-      return next();
-    }
+    if (req.path.startsWith("/api")) return next();
+    if (req.path !== "/" && req.path !== "/manifest") return next();
 
     const platform = req.header("expo-platform");
     if (platform && (platform === "ios" || platform === "android")) {
@@ -187,12 +213,7 @@ function configureExpoAndLanding(app: express.Application) {
     }
 
     if (req.path === "/") {
-      return serveLandingPage({
-        req,
-        res,
-        landingPageTemplate,
-        appName,
-      });
+      return serveLandingPage({ req, res, landingPageTemplate, appName });
     }
 
     next();
@@ -200,40 +221,38 @@ function configureExpoAndLanding(app: express.Application) {
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
-
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
 
 function setupErrorHandler(app: express.Application) {
   app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
-    const error = err as {
-      status?: number;
-      statusCode?: number;
-      message?: string;
-    };
-
+    const error = err as { status?: number; statusCode?: number; message?: string };
     const status = error.status || error.statusCode || 500;
-    const message = error.message || "Internal Server Error";
+    const requestId = res.locals.requestId || "unknown";
 
-    console.error("Internal Server Error:", err);
+    console.error(`Request ${requestId} failed:`, err);
 
-    if (res.headersSent) {
-      return next(err);
-    }
+    if (res.headersSent) return next(err);
 
-    return res.status(status).json({ message });
+    const publicMessage =
+      status >= 500 ? "Internal Server Error" : error.message || "Request failed";
+    return res.status(status).json({ message: publicMessage, requestId });
   });
 }
 
 (async () => {
+  setupRequestIdentity(app);
   setupCors(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
+  setupAgentControlProtection(app);
 
   configureExpoAndLanding(app);
+  registerGemOpsRoutes(app);
+  registerGemOpsAuditRoutes(app);
+  registerGemOpsReviewRoutes(app);
 
   const server = await registerRoutes(app);
-
   setupErrorHandler(app);
 
   const port = parseInt(process.env.PORT || "5000", 10);

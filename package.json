@@ -15,7 +15,18 @@
     "check:types": "tsc --noEmit",
     "check:format": "prettier --check \"**/*.{js,ts,tsx,css,json}\"",
     "format": "prettier --write \"**/*.{js,ts,tsx,css,json}\"",
-    "agent:worker": "tsx server/agent/worker-entry.ts"
+    "agent:worker": "tsx server/agent/worker-entry.ts",
+    "agent:test": "node tests/gem-agent-trust.contract.mjs && tsx tests/gem-agent-runtime.smoke.ts",
+    "ops:check": "node scripts/gem-ops-sentinel.mjs",
+    "ops:cost": "node scripts/gem-ops-cost-guard.mjs",
+    "ops:plan": "node scripts/gem-ops-remediation-plan.mjs",
+    "ops:audit:verify": "node scripts/gem-ops-audit-ledger.mjs --verify-only",
+    "ops:readiness": "node scripts/gem-ops-release-readiness.mjs",
+    "ops:history": "node scripts/gem-ops-history.mjs",
+    "ops:audit": "node scripts/gem-ops-audit-ledger.mjs",
+    "ops:review": "node scripts/gem-ops-review-package.mjs",
+    "ops:all": "npm run ops:audit:verify && npm run ops:check && npm run ops:cost && npm run ops:plan && npm run ops:readiness && npm run ops:history && npm run ops:audit && npm run ops:review",
+    "ops:test": "node tests/gem-ops-sentinel.smoke.mjs && node tests/gem-ops-cost-guard.smoke.mjs && node tests/gem-ops-remediation-plan.smoke.mjs && node tests/gem-ops-release-readiness.smoke.mjs && node tests/gem-ops-history.smoke.mjs && node tests/gem-ops-audit-ledger.smoke.mjs && node tests/gem-ops-review-package.smoke.mjs && node tests/gem-ops-integration.contract.mjs && npm run agent:test"
   },
   "dependencies": {
     "@expo-google-fonts/nunito": "^0.4.2",

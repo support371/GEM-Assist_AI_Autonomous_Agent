@@ -1,19 +1,43 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+function normalizeBaseUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error("API base URL is empty");
+
+  const withProtocol = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  const url = new URL(withProtocol);
+  if (!url.pathname.endsWith("/")) url.pathname += "/";
+  return url.href;
+}
+
 /**
- * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
- * @returns {string} The API base URL
+ * Gets the API base URL.
+ *
+ * Priority:
+ * 1. EXPO_PUBLIC_API_URL when an explicit cross-origin backend is configured.
+ * 2. Browser origin for deployed web builds (Vercel and other same-origin hosts).
+ * 3. EXPO_PUBLIC_DOMAIN for Replit/native compatibility.
  */
 export function getApiUrl(): string {
-  let host = process.env.EXPO_PUBLIC_DOMAIN;
-
-  if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
+  const explicitApiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (explicitApiUrl?.trim()) {
+    return normalizeBaseUrl(explicitApiUrl);
   }
 
-  let url = new URL(`https://${host}`);
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return normalizeBaseUrl(window.location.origin);
+  }
 
-  return url.href;
+  const host = process.env.EXPO_PUBLIC_DOMAIN;
+  if (host?.trim()) {
+    return normalizeBaseUrl(host);
+  }
+
+  throw new Error(
+    "No API endpoint is available. Configure EXPO_PUBLIC_API_URL or EXPO_PUBLIC_DOMAIN.",
+  );
 }
 
 async function throwIfResNotOk(res: Response) {

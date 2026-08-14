@@ -1,0 +1,25 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run agent:test && npx tsc -p tsconfig.agent.json && npx expo export --platform web --output-dir dist",
+  "outputDirectory": "dist",
+  "installCommand": "npm ci --ignore-scripts --no-audit --no-fund",
+  "cleanUrls": true,
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60
+    },
+    "api/runtime-probe.ts": {
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/runtime/provider-probe",
+      "destination": "/api/runtime-probe"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index?path=:path*"
+    }
+  ]
+}

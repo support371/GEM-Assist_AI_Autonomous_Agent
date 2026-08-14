@@ -1,0 +1,221 @@
+name: GEM Cloud Operations Sentinel
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gem-cloud-ops-sentinel
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Read-only GEM delta inspection
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout controller
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate controller syntax
+        run: |
+          node --check scripts/gem-ops-sentinel.mjs
+          node --check scripts/gem-ops-cost-guard.mjs
+          node --check scripts/gem-ops-remediation-plan.mjs
+          node --check scripts/gem-ops-release-readiness.mjs
+          node --check scripts/gem-ops-history.mjs
+          node --check scripts/gem-ops-audit-ledger.mjs
+          node --check scripts/gem-ops-review-package.mjs
+
+      - name: Run deterministic controller and agent trust tests
+        run: npm run ops:test
+
+      - name: Restore previous controller state
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .gem-ops-cache
+          key: gem-ops-state-${{ github.run_id }}
+          restore-keys: |
+            gem-ops-state-
+
+      - name: Verify cached audit integrity
+        env:
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+          GEM_OPS_AUDIT_LEDGER: .gem-ops-cache/audit-ledger.json
+          GEM_OPS_AUDIT_VERIFY_ONLY: "true"
+        shell: bash
+        run: |
+          mkdir -p artifacts/gem-ops
+          node scripts/gem-ops-audit-ledger.mjs > artifacts/gem-ops/audit-verify-console.log 2>&1
+          node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/audit-summary.json","utf8"));if(r.integrity!=="VALID"){console.error(`Audit integrity gate failed: ${r.failureReason || "unknown"}`);process.exit(1)};console.log(`Audit integrity gate passed; events=${r.eventCount}`)'
+
+      - name: Run GEM Cloud Operations Sentinel
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          GEM_OPS_CONFIG: config/gem-ops.targets.json
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+          GEM_OPS_PREVIOUS_STATE: .gem-ops-cache/latest.json
+        shell: bash
+        run: |
+          mkdir -p artifacts/gem-ops
+          set +e
+          node scripts/gem-ops-sentinel.mjs > artifacts/gem-ops/console.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            echo "GEM sentinel failed with exit code $code"
+            tail -n 30 artifacts/gem-ops/console.log
+            exit "$code"
+          fi
+          echo "GEM sentinel completed. No production writes or paid-resource provisioning were attempted."
+
+      - name: Run build-cost guard
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GEM_OPS_CONFIG: config/gem-ops.targets.json
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+        shell: bash
+        run: |
+          if [ -f config/gem-ops.targets.json ]; then
+            node scripts/gem-ops-cost-guard.mjs > artifacts/gem-ops/cost-guard-console.log 2>&1
+            echo "Build-cost guard completed without automatic upgrade or paid provisioning."
+          fi
+
+      - name: Prepare remediation queue
+        if: always()
+        shell: bash
+        run: |
+          if [ -f artifacts/gem-ops/latest.json ]; then
+            node scripts/gem-ops-remediation-plan.mjs > artifacts/gem-ops/remediation-console.log 2>&1
+            echo "Prepare-only remediation queue generated."
+          else
+            echo "No sentinel report exists; remediation planner skipped."
+          fi
+
+      - name: Evaluate release readiness
+        if: always()
+        shell: bash
+        run: |
+          node scripts/gem-ops-release-readiness.mjs > artifacts/gem-ops/release-readiness-console.log 2>&1
+          echo "Release-readiness advice generated. No merge or deployment was performed."
+
+      - name: Record bounded operational history
+        if: always()
+        env:
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+          GEM_OPS_HISTORY: .gem-ops-cache/history.json
+          GEM_OPS_HISTORY_LIMIT: "30"
+          GEM_OPS_HISTORY_PUBLIC_WINDOW: "7"
+        shell: bash
+        run: |
+          node scripts/gem-ops-history.mjs > artifacts/gem-ops/history-console.log 2>&1
+          echo "Bounded controller history updated without external requests."
+
+      - name: Append hash-linked audit event
+        if: always()
+        env:
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+          GEM_OPS_AUDIT_LEDGER: .gem-ops-cache/audit-ledger.json
+          GEM_OPS_AUDIT_LIMIT: "90"
+        shell: bash
+        run: |
+          node scripts/gem-ops-audit-ledger.mjs > artifacts/gem-ops/audit-console.log 2>&1
+          echo "Hash-linked controller audit state evaluated without external requests."
+
+      - name: Generate evidence-bound operator review package
+        if: always()
+        env:
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+          GEM_OPS_REVIEW_TTL_MINUTES: "60"
+        shell: bash
+        run: |
+          node scripts/gem-ops-review-package.mjs > artifacts/gem-ops/review-package-console.log 2>&1
+          echo "Operator review package generated with execution authority NONE."
+
+      - name: Publish private operational summary
+        if: always() && github.event.repository.private == true
+        shell: bash
+        run: |
+          if [ -f artifacts/gem-ops/latest.md ]; then
+            cat artifacts/gem-ops/latest.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "# GEM Cloud Operations Sentinel" >> "$GITHUB_STEP_SUMMARY"
+            echo "Sentinel did not produce a report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/cost-guard.md ]; then
+            cat artifacts/gem-ops/cost-guard.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/remediation-plan.md ]; then
+            cat artifacts/gem-ops/remediation-plan.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/release-readiness.md ]; then
+            cat artifacts/gem-ops/release-readiness.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/history-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/history-summary.json","utf8"));console.log(`\n## Operational trend\n- **Trend:** ${r.trend}\n- **Runs retained:** ${r.retainedRuns}\n- **Latest release state:** ${r.latest?.releaseState || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/audit-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/audit-summary.json","utf8"));console.log(`\n## Audit integrity\n- **Integrity:** ${r.integrity}\n- **Events:** ${r.eventCount}\n- **Head:** ${r.headHash || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/review-package-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/review-package-summary.json","utf8"));console.log(`\n## Operator review package\n- **State:** ${r.state}\n- **Eligible:** ${r.eligible}\n- **Authority:** ${r.executionAuthority}\n- **Package digest:** ${r.packageDigest || "NOT_AVAILABLE"}\n- **Expires:** ${r.expiresAt || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Publish public-safe operational summary
+        if: always() && github.event.repository.private != true
+        shell: bash
+        run: |
+          echo "# GEM Cloud Operations Sentinel" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f artifacts/gem-ops/public-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/public-summary.json","utf8"));console.log(`- **Overall state:** ${r.overallState}\n- **Checks:** ${r.counts.checked}\n- **Healthy:** ${r.counts.healthy}\n- **Degraded:** ${r.counts.degraded}\n- **Failures:** ${r.counts.failed}\n- **Skipped:** ${r.counts.skipped}\n- **Material changes:** ${r.materialChanges}\n- **Resolved:** ${r.resolved}\n- **Remote requests:** ${r.remoteRequests}\n- **Billing guard:** ${r.billingGuard}\n- **Detail exposure:** suppressed because this repository is public`)' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Sentinel did not produce a public-safe report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/cost-guard-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/cost-guard-summary.json","utf8"));console.log(`\n## Build-cost guard\n- **State:** ${r.overallState}\n- **Vercel contexts:** ${r.totals.vercelContexts}\n- **Rate-limited:** ${r.totals.rateLimitedContexts}\n- **Duplicate contexts:** ${r.totals.duplicateContexts}\n- **Automatic paid upgrade:** ${r.automaticUpgradeAllowed ? "ALLOWED" : "FORBIDDEN"}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/remediation-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/remediation-summary.json","utf8"));console.log(`\n## Prepare-only remediation queue\n- **Total:** ${r.totalTasks}\n- **P0:** ${r.counts.P0}\n- **P1:** ${r.counts.P1}\n- **P2:** ${r.counts.P2}\n- **P3:** ${r.counts.P3}\n- **Cost tasks:** ${r.costTasks || 0}\n- **Authority:** ${r.executionAuthority}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/release-readiness-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/release-readiness-summary.json","utf8"));console.log(`\n## Release readiness\n- **Decision:** ${r.state}\n- **Blockers:** ${r.blockers}\n- **Warnings:** ${r.warnings}\n- **Audit integrity:** ${r.auditIntegrity || "NOT_AVAILABLE"}\n- **Authority:** ${r.authority}\n- **Automatic merge:** ${r.automaticMergeAllowed ? "ALLOWED" : "FORBIDDEN"}\n- **Automatic deploy:** ${r.automaticDeploymentAllowed ? "ALLOWED" : "FORBIDDEN"}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/history-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/history-summary.json","utf8"));console.log(`\n## Operational trend\n- **Trend:** ${r.trend}\n- **Runs retained:** ${r.retainedRuns}\n- **Latest operational state:** ${r.latest?.operationalState || "NOT_AVAILABLE"}\n- **Latest release state:** ${r.latest?.releaseState || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/audit-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/audit-summary.json","utf8"));console.log(`\n## Audit integrity\n- **Integrity:** ${r.integrity}\n- **Events:** ${r.eventCount}\n- **Head:** ${r.headHash || "NOT_AVAILABLE"}\n- **Detailed ledger:** protected`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/review-package-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/review-package-summary.json","utf8"));console.log(`\n## Operator review package\n- **State:** ${r.state}\n- **Eligible:** ${r.eligible}\n- **Authority:** ${r.executionAuthority}\n- **Package digest:** ${r.packageDigest || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload detailed sentinel report
+        if: always() && github.event.repository.private == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: gem-ops-report-${{ github.run_number }}
+          path: artifacts/gem-ops/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Save current controller state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .gem-ops-cache
+          key: gem-ops-state-${{ github.run_id }}

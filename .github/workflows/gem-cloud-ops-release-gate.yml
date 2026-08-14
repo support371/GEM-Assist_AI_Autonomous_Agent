@@ -1,0 +1,115 @@
+name: GEM Cloud Ops Release Gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [ready_for_review]
+    branches:
+      - main
+    paths:
+      - "config/gem-ops.targets.json"
+      - "scripts/gem-ops-*.mjs"
+      - "tests/gem-ops-*.mjs"
+      - "server/gem-ops/**"
+      - "server/index.ts"
+      - "server/routes.ts"
+      - "client/screens/OpsScreen.tsx"
+      - "client/navigation/MainTabNavigator.tsx"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/gem-cloud-ops-*.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gem-cloud-ops-release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controller-tests:
+    name: Controller deterministic tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate controller JavaScript syntax
+        run: |
+          node --check scripts/gem-ops-sentinel.mjs
+          node --check scripts/gem-ops-cost-guard.mjs
+          node --check scripts/gem-ops-remediation-plan.mjs
+          node --check scripts/gem-ops-release-readiness.mjs
+          node --check scripts/gem-ops-history.mjs
+          node --check scripts/gem-ops-audit-ledger.mjs
+
+      - name: Run deterministic controller smoke tests
+        run: npm run ops:test
+
+      - name: Validate JSON inventory
+        run: node -e 'JSON.parse(require("fs").readFileSync("config/gem-ops.targets.json", "utf8")); console.log("GEM operations inventory JSON is valid")'
+
+  application-contract:
+    name: Application integration contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: TypeScript contract
+        run: npm run check:types
+
+      - name: Build server bundle
+        run: npm run server:build
+
+  authority-audit:
+    name: Production authority audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assert controller remains non-mutating and auditable
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f server/gem-ops/routes.ts
+          test -f server/gem-ops/audit-routes.ts
+          test -f scripts/gem-ops-sentinel.mjs
+          test -f scripts/gem-ops-cost-guard.mjs
+          test -f scripts/gem-ops-remediation-plan.mjs
+          test -f scripts/gem-ops-release-readiness.mjs
+          test -f scripts/gem-ops-history.mjs
+          test -f scripts/gem-ops-audit-ledger.mjs
+          grep -q 'liveMutationEnabled: false' server/gem-ops/routes.ts
+          grep -q 'PREPARE_ONLY' scripts/gem-ops-remediation-plan.mjs
+          grep -q 'ADVISE_ONLY' scripts/gem-ops-release-readiness.mjs
+          grep -q 'mergeAllowedAutomatically: false' scripts/gem-ops-release-readiness.mjs
+          grep -q 'deploymentAllowedAutomatically: false' scripts/gem-ops-release-readiness.mjs
+          grep -q 'Audit ledger integrity is FAILED' scripts/gem-ops-release-readiness.mjs
+          grep -q 'GEM_OPS_AUDIT_VERIFY_ONLY' scripts/gem-ops-audit-ledger.mjs
+          grep -q 'timingSafeEqual' server/gem-ops/audit-routes.ts
+          grep -q 'never-provision-paid-resources' config/gem-ops.targets.json
+          grep -q 'automaticPaidUpgradeAllowed: false' scripts/gem-ops-cost-guard.mjs
+          if grep -R -n -E 'merge_pull_request|deploy_to_vercel|rotate.*secret|enable.*withdraw|place.*order' server/gem-ops scripts/gem-ops-*.mjs; then
+            echo 'Forbidden production-authority implementation detected in GEM controller paths.'
+            exit 1
+          fi
+          echo 'Authority audit passed: controller remains inspection/preparation/advice only with hash-linked audit integrity.'
