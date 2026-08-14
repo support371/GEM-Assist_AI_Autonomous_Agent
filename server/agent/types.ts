@@ -10,6 +10,15 @@ export type Task = {
   completedAt?: string;
 };
 
+export type AgentQuality = {
+  model: string;
+  trustMode: "fail-closed";
+  toolCalls: number;
+  completedTasks: number;
+  failedTasks: number;
+  averageConfidence: number | null;
+};
+
 export type AgentState = {
   id: string;
   goal: string;
@@ -22,19 +31,20 @@ export type AgentState = {
   createdAt: string;
   updatedAt: string;
   autonomous: boolean;
+  quality: AgentQuality;
 };
 
 export type AgentLogEntry = {
   timestamp: string;
   type: "info" | "task" | "tool" | "reflection" | "error" | "warning";
   message: string;
-  data?: any;
+  data?: unknown;
 };
 
-export type ToolInput = Record<string, any>;
+export type ToolInput = Record<string, unknown>;
 export type ToolOutput = {
   success: boolean;
-  result: any;
+  result: unknown;
   error?: string;
 };
 
@@ -84,4 +94,8 @@ export type AgentConfig = {
   maxRetries: number;
   autonomousMode: boolean;
   reflectionEnabled: boolean;
+  maxToolCallsPerTask: number;
+  minReflectionConfidence: number;
+  maxPlanTasks: number;
+  model: string;
 };

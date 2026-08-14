@@ -36,8 +36,9 @@ jobs:
           node --check scripts/gem-ops-release-readiness.mjs
           node --check scripts/gem-ops-history.mjs
           node --check scripts/gem-ops-audit-ledger.mjs
+          node --check scripts/gem-ops-review-package.mjs
 
-      - name: Run deterministic controller tests
+      - name: Run deterministic controller and agent trust tests
         run: npm run ops:test
 
       - name: Restore previous controller state
@@ -135,6 +136,16 @@ jobs:
           node scripts/gem-ops-audit-ledger.mjs > artifacts/gem-ops/audit-console.log 2>&1
           echo "Hash-linked controller audit state evaluated without external requests."
 
+      - name: Generate evidence-bound operator review package
+        if: always()
+        env:
+          GEM_OPS_OUTPUT_DIR: artifacts/gem-ops
+          GEM_OPS_REVIEW_TTL_MINUTES: "60"
+        shell: bash
+        run: |
+          node scripts/gem-ops-review-package.mjs > artifacts/gem-ops/review-package-console.log 2>&1
+          echo "Operator review package generated with execution authority NONE."
+
       - name: Publish private operational summary
         if: always() && github.event.repository.private == true
         shell: bash
@@ -159,6 +170,9 @@ jobs:
           fi
           if [ -f artifacts/gem-ops/audit-summary.json ]; then
             node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/audit-summary.json","utf8"));console.log(`\n## Audit integrity\n- **Integrity:** ${r.integrity}\n- **Events:** ${r.eventCount}\n- **Head:** ${r.headHash || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/review-package-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/review-package-summary.json","utf8"));console.log(`\n## Operator review package\n- **State:** ${r.state}\n- **Eligible:** ${r.eligible}\n- **Authority:** ${r.executionAuthority}\n- **Package digest:** ${r.packageDigest || "NOT_AVAILABLE"}\n- **Expires:** ${r.expiresAt || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Publish public-safe operational summary
@@ -185,6 +199,9 @@ jobs:
           fi
           if [ -f artifacts/gem-ops/audit-summary.json ]; then
             node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/audit-summary.json","utf8"));console.log(`\n## Audit integrity\n- **Integrity:** ${r.integrity}\n- **Events:** ${r.eventCount}\n- **Head:** ${r.headHash || "NOT_AVAILABLE"}\n- **Detailed ledger:** protected`)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/gem-ops/review-package-summary.json ]; then
+            node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("artifacts/gem-ops/review-package-summary.json","utf8"));console.log(`\n## Operator review package\n- **State:** ${r.state}\n- **Eligible:** ${r.eligible}\n- **Authority:** ${r.executionAuthority}\n- **Package digest:** ${r.packageDigest || "NOT_AVAILABLE"}`)' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload detailed sentinel report
