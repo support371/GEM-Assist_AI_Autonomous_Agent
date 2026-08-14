@@ -38,6 +38,8 @@ includes(engine, 'trustMode: "fail-closed"');
 includes(engine, "Verification response could not be validated");
 includes(engine, "minReflectionConfidence");
 includes(engine, "Stopping to prevent cascading unsupported work");
+includes(engine, "goal.id", "Resumed goals must preserve the original goal identity");
+includes(engine, "details: result.error.details ?? null", "Tool failures should preserve bounded diagnostics for repair quality");
 includes(types, 'trustMode: "fail-closed"');
 
 includes(engine, "maxToolCallsPerTask");
@@ -121,7 +123,7 @@ includes(reviewPackage, 'executionAuthority: "NONE"');
 assert.equal(pkg.scripts["agent:test"], "node tests/gem-agent-trust.contract.mjs");
 assert.ok(pkg.scripts["ops:test"].includes("gem-agent-trust.contract.mjs"));
 assert.ok(vercel.buildCommand.includes("npm run agent:test"));
-assert.ok(vercel.buildCommand.includes("tsc --noEmit"));
+assert.ok(vercel.buildCommand.includes("tsc -p tsconfig.agent.json"));
 assert.ok(
   vercel.rewrites.some(
     (rewrite) =>

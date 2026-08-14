@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run agent:test && npx tsc --noEmit --moduleResolution bundler --module esnext && npx expo export --platform web --output-dir dist",
+  "buildCommand": "npm run agent:test && npx tsc -p tsconfig.agent.json && npx expo export --platform web --output-dir dist",
   "outputDirectory": "dist",
   "installCommand": "npm ci --ignore-scripts --no-audit --no-fund",
   "cleanUrls": true,
