@@ -120,8 +120,9 @@ includes(sentinelWorkflow, "execution authority NONE");
 includes(reviewPackage, 'path.join(OUTPUT_DIR, "review-package-summary.json")');
 includes(reviewPackage, 'executionAuthority: "NONE"');
 
-assert.equal(pkg.scripts["agent:test"], "node tests/gem-agent-trust.contract.mjs");
-assert.ok(pkg.scripts["ops:test"].includes("gem-agent-trust.contract.mjs"));
+includes(pkg.scripts["agent:test"], "gem-agent-trust.contract.mjs");
+includes(pkg.scripts["agent:test"], "gem-agent-runtime.smoke.ts");
+includes(pkg.scripts["ops:test"], "npm run agent:test");
 assert.ok(vercel.buildCommand.includes("npm run agent:test"));
 assert.ok(vercel.buildCommand.includes("tsc -p tsconfig.agent.json"));
 assert.ok(
