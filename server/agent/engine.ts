@@ -39,7 +39,12 @@ function getOpenAI(): OpenAI {
   if (!apiKey) throw new Error("AI provider credential is not configured");
 
   const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined;
-  openAIClient = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
+  openAIClient = new OpenAI({
+    apiKey,
+    ...(baseURL ? { baseURL } : {}),
+    timeout: 50_000,
+    maxRetries: 1,
+  });
   return openAIClient;
 }
 
@@ -101,7 +106,7 @@ function redact(value: string): string {
   return value
     .replace(/sk-[A-Za-z0-9_-]{10,}/g, "[REDACTED]")
     .replace(
-      /((?:api[_-]?key|token|secret|password|authorization|cookie)\s*[:=]\s*)[^\s,;]+/gi,
+      /((?:api[_-]?key|token|secret|password|authorization|cookie|database_url|redis_url)\s*[:=]\s*)[^\s,;]+/gi,
       "$1[REDACTED]",
     )
     .slice(0, 16_000);
@@ -201,7 +206,11 @@ function toolObservation(result: Awaited<ReturnType<typeof executeTool>>): strin
   return redact(
     JSON.stringify({
       ok: false,
-      error: { code: result.error.code, message: result.error.message },
+      error: {
+        code: result.error.code,
+        message: result.error.message,
+        details: result.error.details ?? null,
+      },
     }),
   );
 }
@@ -534,6 +543,7 @@ export async function resumeUnfinishedGoals(
       goal.goal,
       { autonomousMode: true },
       onUpdate,
+      goal.id,
     );
     results.push(state);
   }

@@ -1,12 +1,12 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { registerRoutes } from "./routes";
 import { registerGemOpsRoutes } from "./gem-ops/routes";
 import { registerGemOpsAuditRoutes } from "./gem-ops/audit-routes";
 import { registerGemOpsReviewRoutes } from "./gem-ops/review-routes";
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 const app = express();
 const log = console.log;
@@ -64,7 +64,7 @@ function setupCors(app: express.Application) {
       );
       res.header(
         "Access-Control-Allow-Headers",
-        "Content-Type, X-GEM-Ops-Token, X-Request-Id",
+        "Content-Type, X-GEM-Ops-Token, X-GEM-Agent-Token, X-Request-Id",
       );
       res.header("Access-Control-Allow-Credentials", "true");
     }
@@ -97,6 +97,38 @@ function setupRequestLogging(app: express.Application) {
       );
     });
     next();
+  });
+}
+
+function secureEqual(supplied: string, expected: string): boolean {
+  const left = Buffer.from(supplied);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function setupAgentControlProtection(app: express.Application) {
+  app.use("/api/agent", (req, res, next) => {
+    const pathOnly = req.originalUrl.split("?", 1)[0];
+    if (req.method === "GET" && pathOnly === "/api/agent/tools") return next();
+
+    const expected = process.env.GEM_AGENT_API_TOKEN?.trim();
+    if (!expected) {
+      return res.status(503).json({
+        error: "Agent control plane locked",
+        requestId: res.locals.requestId,
+        message: "GEM_AGENT_API_TOKEN must be configured before queued-agent control routes are exposed.",
+      });
+    }
+
+    const supplied = req.header("x-gem-agent-token") || "";
+    if (!secureEqual(supplied, expected)) {
+      return res.status(401).json({
+        error: "Unauthorized",
+        requestId: res.locals.requestId,
+      });
+    }
+
+    return next();
   });
 }
 
@@ -213,6 +245,7 @@ function setupErrorHandler(app: express.Application) {
   setupCors(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
+  setupAgentControlProtection(app);
 
   configureExpoAndLanding(app);
   registerGemOpsRoutes(app);
