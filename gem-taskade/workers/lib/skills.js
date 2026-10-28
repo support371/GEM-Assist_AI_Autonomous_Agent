@@ -58,12 +58,12 @@ export function parseToolCall(text) {
 }
 
 /** Dispatch to the right skill implementation. */
-export async function runSkill(call, env) {
+export async function runSkill(call, env, scope = {}) {
   const { tool, args } = call;
   if (tool === 'web_search')    return webSearch(args, env);
   if (tool === 'fetch_url')     return fetchUrl(args, env);
   if (tool === 'calculator')    return calculator(args, env);
-  if (tool === 'rag_search')    return ragSearch(args, env);
+  if (tool === 'rag_search')    return ragSearch(args, env, scope);
   if (tool === 'send_telegram') return sendTelegram(args, env);
   return { error: `Unknown tool: ${tool}` };
 }
@@ -120,7 +120,7 @@ function calculator({ expression }, env) {
   } catch (e) { return { error: e.message }; }
 }
 
-async function ragSearch({ query, k = 5 }, env) {
+async function ragSearch({ query, k = 5 }, env, scope = {}) {
   if (!(env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY && env.AI)) {
     return { error: 'RAG not configured (needs Supabase + Workers AI)' };
   }
@@ -129,7 +129,9 @@ async function ragSearch({ query, k = 5 }, env) {
     const emb = await env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [query] });
     const vector = emb.data?.[0];
     if (!vector) return { error: 'Embedding failed' };
-    // 2. Call Supabase RPC match_knowledge(query_embedding, match_count)
+    // 2. Call match_knowledge with the caller's workspace. The RPC filters
+    //    to (workspace_id IS NULL OR workspace_id = caller_workspace), so
+    //    anonymous callers (null workspace) see only globally-shared chunks.
     const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/match_knowledge`, {
       method: 'POST',
       headers: {
@@ -137,11 +139,20 @@ async function ragSearch({ query, k = 5 }, env) {
         Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ query_embedding: vector, match_count: k }),
+      body: JSON.stringify({
+        query_embedding: vector,
+        match_count: k,
+        caller_workspace: scope.workspaceId || null,
+      }),
     });
     if (!res.ok) return { error: `RAG query failed: ${res.status}` };
     const rows = await res.json();
-    return { matches: rows.map(r => ({ source: r.source, chunk: r.chunk, similarity: r.similarity })) };
+    return {
+      matches: rows.map(r => ({
+        source: r.source, chunk: r.chunk, similarity: r.similarity,
+        scope: r.workspace_id ? 'workspace' : 'global',
+      })),
+    };
   } catch (e) { return { error: e.message }; }
 }
 

@@ -15,6 +15,7 @@
 import { classifyTask, routeModel } from './lib/router.js';
 import { callProvider } from './lib/providers.js';
 import { runAgent, registerAgents, AGENT_REGISTRY } from './lib/agent.js';
+import { verifyAuth } from './lib/auth.js';
 
 // Agents are embedded at build time (not loaded from disk — Workers don't have filesystem).
 import architectDef from '../agents/architect.json' with { type: 'json' };
@@ -43,7 +44,7 @@ export default {
     // CORS preflight
     if (request.method === 'OPTIONS') return corsResponse(request, env);
 
-    // /llm · raw provider router
+    // /llm · raw provider router (auth optional — anonymous still allowed)
     if (path === '/llm' && request.method === 'POST') {
       try {
         const body = await request.json();
@@ -53,14 +54,21 @@ export default {
     }
 
     // /agent/:name · full Superagent runtime
+    // Auth is validated here. Authenticated callers get:
+    //  - their auth.users id as owner_id (per-user memory + facts)
+    //  - access to workspace-scoped knowledge (via x-gem-workspace header)
+    // Anonymous callers get a short per-request id and global-only knowledge.
     const agentMatch = path.match(/^\/agent\/([a-z0-9_-]+)$/i);
     if (agentMatch && request.method === 'POST') {
       try {
+        const auth = await verifyAuth(request, env);
         const body = await request.json();
         const result = await runAgent({
           agentName: agentMatch[1],
           userText: body.message || body.content || '',
-          userId:   body.user_id || 'anonymous',
+          userId:   auth.userId || body.user_id || `anon-${crypto.randomUUID()}`,
+          workspaceId: auth.workspaceId,
+          anonymous: auth.anonymous,
           env, ctx,
         });
         return json(result, 200, corsHeaders(request, env));

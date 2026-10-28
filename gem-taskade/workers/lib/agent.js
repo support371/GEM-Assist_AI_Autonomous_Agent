@@ -23,7 +23,7 @@ export function registerAgents(defs) {
   for (const d of defs) AGENT_REGISTRY[d.name.toLowerCase()] = d;
 }
 
-export async function runAgent({ agentName, userText, userId, env, ctx }) {
+export async function runAgent({ agentName, userText, userId, workspaceId = null, anonymous = false, env, ctx }) {
   const def = AGENT_REGISTRY[String(agentName || '').toLowerCase()];
   if (!def) throw new Error(`Agent not found: ${agentName}`);
 
@@ -76,8 +76,9 @@ export async function runAgent({ agentName, userText, userId, env, ctx }) {
     const toolCall = parseToolCall(text);
     if (!toolCall || iterations >= maxTools) break;
 
-    // Run the tool and feed the result back
-    const result = await runSkill(toolCall, env);
+    // Run the tool and feed the result back. workspaceId passes through to
+    // rag_search so a caller only sees their workspace's chunks + globals.
+    const result = await runSkill(toolCall, env, { workspaceId });
     messages = [
       ...messages,
       { role: 'assistant', content: text },
