@@ -156,8 +156,13 @@ async function callAgent(agentName, message, userId) {
       const token = data?.session?.access_token;
       if (token) headers.authorization = `Bearer ${token}`;
     }
+    // Only send the workspace header when it looks like a UUID — a seeded
+    // 'ws1'-style ID would be rejected by the UUID-typed RPC parameter
+    // and would blank out the whole rag_search response.
     const wsId = window.__gem?.activeWorkspaceId;
-    if (wsId) headers['x-gem-workspace'] = wsId;
+    if (wsId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(wsId)) {
+      headers['x-gem-workspace'] = wsId;
+    }
   } catch {}
 
   const res = await fetch(`${AGENT_ENDPOINT}/${encodeURIComponent(agentName)}`, {

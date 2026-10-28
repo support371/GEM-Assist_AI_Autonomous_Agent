@@ -64,10 +64,14 @@ async function embed(texts) {
 }
 
 async function insertChunks(rows) {
-  // Upsert on (source, chunk_index) so re-ingesting a doc replaces its
-  // old chunks instead of accumulating duplicates (Sourcery #4).
-  // Requires the unique index from migrations/002_phase2_concurrency.sql.
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/knowledge_base?on_conflict=source,chunk_index`, {
+  // Upsert on (COALESCE(workspace_id, zero_uuid), source, chunk_index) so
+  // re-ingesting a doc replaces its OWN chunks and never clobbers another
+  // scope's copy. Requires migrations/003_phase3_auth_scoping.sql, which
+  // dropped the Phase-2 (source, chunk_index) index for exactly this reason.
+  //
+  // PostgREST on_conflict uses column names; it resolves to the
+  // idx_kb_scope_source_chunk unique expression index.
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/knowledge_base?on_conflict=workspace_id,source,chunk_index`, {
     method: 'POST',
     headers: {
       apikey: SUPABASE_SERVICE_KEY,

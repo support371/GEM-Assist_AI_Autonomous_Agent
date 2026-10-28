@@ -17,6 +17,21 @@ ALTER TABLE knowledge_base
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_workspace ON knowledge_base(workspace_id);
 
+-- Drop the Phase-2 (source, chunk_index) unique index — it would let a
+-- workspace re-ingest clobber the global copy of the same document
+-- because it ignores workspace_id in the conflict key.
+DROP INDEX IF EXISTS idx_kb_source_chunk;
+-- Replacement: scope-aware uniqueness. COALESCE lets NULL (global) and
+-- distinct workspaces coexist for the same (source, chunk_index).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kb_scope_source_chunk
+  ON knowledge_base(COALESCE(workspace_id, '00000000-0000-0000-0000-000000000000'::uuid), source, chunk_index)
+  WHERE chunk_index IS NOT NULL;
+
+-- Remove legacy rows that pre-date chunk_index — they'd otherwise stay
+-- globally visible as unscoped globals and poison RAG results. Safe to
+-- delete because the ingest script re-creates them with upsert.
+DELETE FROM knowledge_base WHERE chunk_index IS NULL;
+
 -- ───────── Replace match_knowledge with scoped variant ─────────
 -- Workers passing a workspace_id get that workspace's chunks + globals.
 -- Workers passing NULL get globals only (safe default for unauthenticated).
@@ -40,24 +55,45 @@ LANGUAGE sql STABLE AS $$
 $$;
 
 -- ───────── RLS on knowledge_base ─────────
--- Blocks direct REST reads of workspace-private rows. The Worker's service-role
--- key bypasses RLS (that's by design — it enforces the filter in match_knowledge).
+-- Reads: globals + the caller's own workspaces.
+-- Writes: ONLY to a workspace the caller owns. Global rows are
+--   write-locked for regular users — only the service role (ingest script)
+--   may insert / update / delete them. This closes the "poison globals"
+--   path where any authenticated user with the client lib could rewrite
+--   shared knowledge.
 ALTER TABLE knowledge_base ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS kb_read_global_or_member ON knowledge_base;
+DROP POLICY IF EXISTS kb_read_global_or_member    ON knowledge_base;
+DROP POLICY IF EXISTS kb_write_owner_or_member    ON knowledge_base;
+DROP POLICY IF EXISTS kb_insert_owned_workspace   ON knowledge_base;
+DROP POLICY IF EXISTS kb_update_owned_workspace   ON knowledge_base;
+DROP POLICY IF EXISTS kb_delete_owned_workspace   ON knowledge_base;
+
 CREATE POLICY kb_read_global_or_member ON knowledge_base FOR SELECT
   USING (
     workspace_id IS NULL
     OR workspace_id IN (SELECT id FROM workspaces WHERE owner_id = auth.uid())
   );
-DROP POLICY IF EXISTS kb_write_owner_or_member ON knowledge_base;
-CREATE POLICY kb_write_owner_or_member ON knowledge_base FOR ALL
+
+-- INSERT / UPDATE / DELETE all require a non-null workspace the caller owns.
+-- Globals are managed only by the service role (which bypasses RLS).
+CREATE POLICY kb_insert_owned_workspace ON knowledge_base FOR INSERT
+  WITH CHECK (
+    workspace_id IS NOT NULL
+    AND workspace_id IN (SELECT id FROM workspaces WHERE owner_id = auth.uid())
+  );
+CREATE POLICY kb_update_owned_workspace ON knowledge_base FOR UPDATE
   USING (
-    workspace_id IS NULL
-    OR workspace_id IN (SELECT id FROM workspaces WHERE owner_id = auth.uid())
+    workspace_id IS NOT NULL
+    AND workspace_id IN (SELECT id FROM workspaces WHERE owner_id = auth.uid())
   )
   WITH CHECK (
-    workspace_id IS NULL
-    OR workspace_id IN (SELECT id FROM workspaces WHERE owner_id = auth.uid())
+    workspace_id IS NOT NULL
+    AND workspace_id IN (SELECT id FROM workspaces WHERE owner_id = auth.uid())
+  );
+CREATE POLICY kb_delete_owned_workspace ON knowledge_base FOR DELETE
+  USING (
+    workspace_id IS NOT NULL
+    AND workspace_id IN (SELECT id FROM workspaces WHERE owner_id = auth.uid())
   );
 
 GRANT EXECUTE ON FUNCTION match_knowledge(VECTOR, INT, UUID) TO authenticated, anon, service_role;
@@ -66,6 +102,12 @@ GRANT EXECUTE ON FUNCTION match_knowledge(VECTOR, INT, UUID) TO authenticated, a
 -- Agent grades, facts, summaries, and conversation turns are per-user. The
 -- Worker writes with service_role (bypasses RLS); clients reading directly
 -- see only their own rows.
+--
+-- IMPORTANT: owner_id is stored as TEXT (so Telegram chat ids and anon-xxx
+-- fallbacks fit). Compare as text — casting stored values to uuid raises
+-- an error on non-UUID rows and breaks the whole read.
+-- Anonymous rows (owner_id IS NULL) are NOT visible to arbitrary callers,
+-- otherwise one user could read another's anonymous session summary.
 ALTER TABLE agent_grades    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_facts     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_summaries ENABLE ROW LEVEL SECURITY;
@@ -74,6 +116,6 @@ DROP POLICY IF EXISTS grades_own  ON agent_grades;
 DROP POLICY IF EXISTS facts_own   ON agent_facts;
 DROP POLICY IF EXISTS summ_own    ON agent_summaries;
 
-CREATE POLICY grades_own  ON agent_grades    FOR SELECT USING (owner_id::uuid = auth.uid() OR owner_id IS NULL);
-CREATE POLICY facts_own   ON agent_facts     FOR SELECT USING (owner_id::uuid = auth.uid() OR owner_id IS NULL);
-CREATE POLICY summ_own    ON agent_summaries FOR SELECT USING (owner_id::uuid = auth.uid() OR owner_id IS NULL);
+CREATE POLICY grades_own  ON agent_grades    FOR SELECT USING (owner_id = auth.uid()::text);
+CREATE POLICY facts_own   ON agent_facts     FOR SELECT USING (owner_id = auth.uid()::text);
+CREATE POLICY summ_own    ON agent_summaries FOR SELECT USING (owner_id = auth.uid()::text);

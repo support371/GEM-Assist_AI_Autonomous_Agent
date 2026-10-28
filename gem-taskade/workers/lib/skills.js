@@ -132,19 +132,26 @@ async function ragSearch({ query, k = 5 }, env, scope = {}) {
     // 2. Call match_knowledge with the caller's workspace. The RPC filters
     //    to (workspace_id IS NULL OR workspace_id = caller_workspace), so
     //    anonymous callers (null workspace) see only globally-shared chunks.
-    const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/match_knowledge`, {
-      method: 'POST',
-      headers: {
-        apikey: env.SUPABASE_SERVICE_KEY,
-        Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query_embedding: vector,
-        match_count: k,
-        caller_workspace: scope.workspaceId || null,
-      }),
-    });
+    //    Bounded timeout — Supabase slowness must not pin a Worker request.
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 5000);
+    let res;
+    try {
+      res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/match_knowledge`, {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: {
+          apikey: env.SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query_embedding: vector,
+          match_count: k,
+          caller_workspace: scope.workspaceId || null,
+        }),
+      });
+    } finally { clearTimeout(timeout); }
     if (!res.ok) return { error: `RAG query failed: ${res.status}` };
     const rows = await res.json();
     return {

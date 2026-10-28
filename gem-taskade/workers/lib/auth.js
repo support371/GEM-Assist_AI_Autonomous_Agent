@@ -22,9 +22,22 @@ export function requiresAuth(path) {
   return path === '/llm' || path.startsWith('/agent/');
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DEFAULT_TIMEOUT_MS = 4000;
+
+async function fetchWithTimeout(url, opts = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally { clearTimeout(t); }
+}
+
 /**
  * Extract and verify a Supabase JWT from the Authorization header.
- * Returns { userId, workspaceId } for a valid token.
+ * Returns { userId, workspaceId } for a valid token with a verified-membership
+ *   workspace, or workspaceId: null when the header is missing / not a UUID /
+ *   not owned by the caller.
  * Returns { userId: null, workspaceId: null, anonymous: true } for no token
  * or an invalid one — callers decide whether to allow anonymous.
  */
@@ -36,7 +49,7 @@ export async function verifyAuth(request, env) {
   }
   const token = match[1];
   try {
-    const res = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    const res = await fetchWithTimeout(`${env.SUPABASE_URL}/auth/v1/user`, {
       headers: {
         apikey: env.SUPABASE_ANON_KEY,
         authorization: `Bearer ${token}`,
@@ -47,12 +60,37 @@ export async function verifyAuth(request, env) {
     const userId = user?.id || null;
     if (!userId) return { userId: null, workspaceId: null, anonymous: true };
 
-    // Resolve the user's active workspace. Client passes it in a custom
-    // header so we don't round-trip to the DB on every call.
-    const workspaceId = request.headers.get('x-gem-workspace') || null;
+    // Verify the x-gem-workspace header against actual ownership. A trusted
+    // header value could otherwise let one user hand us another user's
+    // workspace UUID and read their private knowledge.
+    const requested = request.headers.get('x-gem-workspace') || null;
+    const workspaceId = UUID_RE.test(requested || '')
+      ? await verifyWorkspaceOwnership(env, userId, requested)
+      : null;
     return { userId, workspaceId, anonymous: false };
   } catch (err) {
     console.error('[auth] verify failed:', err?.message || err);
     return { userId: null, workspaceId: null, anonymous: true };
+  }
+}
+
+/**
+ * Confirm the user owns the requested workspace. Service role bypasses RLS
+ * so we filter on both ids. Returns the workspace id when verified, null
+ * otherwise. Fails closed on any error.
+ */
+async function verifyWorkspaceOwnership(env, userId, workspaceId) {
+  if (!env.SUPABASE_SERVICE_KEY) return null;
+  try {
+    const res = await fetchWithTimeout(
+      `${env.SUPABASE_URL}/rest/v1/workspaces?id=eq.${workspaceId}&owner_id=eq.${userId}&select=id`,
+      { headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } },
+    );
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return Array.isArray(rows) && rows.length === 1 ? workspaceId : null;
+  } catch (err) {
+    console.error('[auth] workspace verify failed:', err?.message || err);
+    return null;
   }
 }

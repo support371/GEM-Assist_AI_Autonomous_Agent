@@ -63,10 +63,15 @@ export default {
       try {
         const auth = await verifyAuth(request, env);
         const body = await request.json();
+        // SECURITY: never trust body.user_id. If a caller could claim an
+        // arbitrary user_id they could read and write that user's memory.
+        // Authenticated callers get their verified auth.users id; everyone
+        // else gets a per-request server-generated id with no stored history.
+        const userId = auth.userId || `anon-${crypto.randomUUID()}`;
         const result = await runAgent({
           agentName: agentMatch[1],
           userText: body.message || body.content || '',
-          userId:   auth.userId || body.user_id || `anon-${crypto.randomUUID()}`,
+          userId,
           workspaceId: auth.workspaceId,
           anonymous: auth.anonymous,
           env, ctx,
@@ -336,7 +341,7 @@ function corsHeaders(request, env) {
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Gem-Workspace',
     'Access-Control-Max-Age': '86400', 'Vary': 'Origin',
   };
 }
