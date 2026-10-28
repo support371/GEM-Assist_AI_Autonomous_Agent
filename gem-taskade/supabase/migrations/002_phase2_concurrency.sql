@@ -1,6 +1,27 @@
 -- GEM Taskade · Phase 2 migration · concurrency + atomic writes
 -- Apply with: supabase db execute --file supabase/migrations/002_phase2_concurrency.sql
 -- or paste into the SQL editor.
+--
+-- IMPORTANT: schema.sql must be applied first (defines projects, tasks,
+-- agent_summaries, auth integration).
+
+-- ───────── agent_summaries schema addendum ─────────
+-- Rollup writes `period_start`, `period_end`, `model_used`; original
+-- schema omitted them. Also owner_id must be nullable so anonymous
+-- group rollups can be stored.
+ALTER TABLE agent_summaries ALTER COLUMN owner_id DROP NOT NULL;
+ALTER TABLE agent_summaries
+  ADD COLUMN IF NOT EXISTS period_start TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS period_end   TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS model_used   TEXT;
+
+-- ───────── knowledge_base dedup support ─────────
+-- Lets scripts/ingest-knowledge.mjs upsert by (source, chunk_index) so
+-- re-ingesting a doc replaces its old chunks instead of duplicating them.
+ALTER TABLE knowledge_base
+  ADD COLUMN IF NOT EXISTS chunk_index INTEGER;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kb_source_chunk
+  ON knowledge_base(source, chunk_index) WHERE chunk_index IS NOT NULL;
 
 -- ───────── Append-only agent turn log ─────────
 -- Replaces read-modify-write on agent_conversations.messages with a
@@ -29,6 +50,11 @@ CREATE POLICY turns_own_write ON agent_conversation_turns FOR INSERT WITH CHECK 
 -- ───────── Atomic project + tasks RPC ─────────
 -- Called by the SPA when a project is created from an AI plan: one
 -- transaction, no half-landed state possible.
+--
+-- Accepts both the DB-shape (snake_case: due_date) and the app-shape
+-- (camelCase: dueDate) for task fields so the SPA can pass its own
+-- objects without a translation layer. Caller may omit per-task `id`;
+-- the DB generates one.
 CREATE OR REPLACE FUNCTION create_project_with_tasks(
   p_workspace UUID,
   p_project   JSONB,
@@ -40,26 +66,31 @@ AS $$
 DECLARE
   new_project_id UUID;
 BEGIN
-  INSERT INTO projects (workspace_id, name, icon, color)
+  -- schema.sql defines projects(workspace_id, name, emoji, color, ...)
+  INSERT INTO projects (workspace_id, name, emoji, color)
   VALUES (
     p_workspace,
     COALESCE(p_project->>'name', 'Untitled'),
-    p_project->>'icon',
+    COALESCE(p_project->>'emoji', p_project->>'icon'),  -- accept either
     p_project->>'color'
   )
   RETURNING id INTO new_project_id;
 
   IF jsonb_typeof(p_tasks) = 'array' THEN
-    INSERT INTO tasks (id, project_id, title, completed, priority, due_date, assignee, notes)
+    INSERT INTO tasks (project_id, title, completed, priority, due_date, assignee, notes, tags)
     SELECT
-      COALESCE((t->>'id')::uuid, gen_random_uuid()),
       new_project_id,
       t->>'title',
       COALESCE((t->>'completed')::boolean, false),
       NULLIF(t->>'priority',''),
-      NULLIF(t->>'due_date','')::timestamptz,
+      NULLIF(COALESCE(t->>'due_date', t->>'dueDate'),'')::date,
       NULLIF(t->>'assignee',''),
-      NULLIF(t->>'notes','')
+      NULLIF(t->>'notes',''),
+      CASE
+        WHEN jsonb_typeof(t->'tags') = 'array' THEN
+          ARRAY(SELECT jsonb_array_elements_text(t->'tags'))
+        ELSE '{}'::text[]
+      END
     FROM jsonb_array_elements(p_tasks) AS t
     WHERE t ? 'title';
   END IF;

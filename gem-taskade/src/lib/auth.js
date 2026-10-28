@@ -16,16 +16,27 @@
 
 const DEVICE_ID_KEY = 'gem.device_id';
 
+// Per-visitor fallback id. Even when localStorage is unavailable we still
+// mint a fresh uuid per page load so visitors never share the shared
+// 'anonymous' namespace in agent memory.
+let _sessionId = null;
+function freshId() {
+  try { return crypto.randomUUID?.() || `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`; }
+  catch { return `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`; }
+}
 function deviceId() {
   try {
     let v = localStorage.getItem(DEVICE_ID_KEY);
     if (!v) {
-      v = (crypto.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2));
+      v = freshId();
       localStorage.setItem(DEVICE_ID_KEY, v);
     }
     return v;
   } catch {
-    return 'anonymous';
+    // localStorage blocked (private mode, 3p-cookies off, etc.) — keep a
+    // per-page-load session id instead of collapsing to the 'anonymous' bucket.
+    if (!_sessionId) _sessionId = freshId();
+    return _sessionId;
   }
 }
 

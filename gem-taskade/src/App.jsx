@@ -122,11 +122,21 @@ async function callLLM(body) {
 // ─── Agent runtime client (Base44 Superagent-style, routed via /agent/:name) ───
 const AGENT_ENDPOINT = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_LLM_PROXY_URL?.replace('/llm','/agent'))
   || '/api/agent';
+// Per-tab fallback uid used only if auth init failed and window.__gem.userId
+// never got populated. Still per-visitor (not shared across tabs/browsers).
+let __tabFallbackUid = null;
+function tabFallbackUid() {
+  if (!__tabFallbackUid) {
+    try { __tabFallbackUid = crypto.randomUUID?.() || 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+    catch { __tabFallbackUid = 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+  }
+  return __tabFallbackUid;
+}
 async function callAgent(agentName, message, userId) {
   // Caller may pass a userId; otherwise read the auth-bootstrapped one.
   // Never falls back to the shared 'anonymous' string — that bled facts
   // across visitors (Sourcery #5).
-  const uid = userId || window.__gem?.userId || 'device-' + (Math.random().toString(36).slice(2, 10));
+  const uid = userId || window.__gem?.userId || tabFallbackUid();
   const res = await fetch(`${AGENT_ENDPOINT}/${encodeURIComponent(agentName)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -145,20 +155,26 @@ const AI_AGENTS = [
 ];
 
 // ─── Agent health observability tile (reads live from agent_grades) ───
+function median(nums) {
+  if (!nums.length) return 0;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
 function AgentHealthTile({ grades = [] }) {
   if (!grades.length) return null;
   const byAgent = grades.reduce((acc, g) => {
-    const a = acc[g.agent_id] ||= { count: 0, sumScore: 0, sumLatency: 0, models: {} };
+    const a = acc[g.agent_id] ||= { count: 0, sumScore: 0, latencies: [], models: {} };
     a.count += 1;
     a.sumScore += Number(g.score) || 0;
-    a.sumLatency += Number(g.latency_ms) || 0;
+    a.latencies.push(Number(g.latency_ms) || 0);
     a.models[g.model_used] = (a.models[g.model_used] || 0) + 1;
     return acc;
   }, {});
   const rows = Object.entries(byAgent).map(([agent, s]) => ({
     agent,
     avgScore: Math.round(s.sumScore / s.count),
-    avgLatency: Math.round(s.sumLatency / s.count),
+    p50Latency: median(s.latencies),  // true median now, matches the "p50 ms" label
     turns: s.count,
     topModel: Object.entries(s.models).sort((a, b) => b[1] - a[1])[0]?.[0] || '—',
   }));
@@ -185,7 +201,7 @@ function AgentHealthTile({ grades = [] }) {
             <tr key={r.agent} style={{ borderTop: `1px solid ${T.bd}` }}>
               <td style={{ padding: '6px', fontWeight: 500 }}>{r.agent}</td>
               <td style={{ padding: '6px', textAlign: 'right', color: r.avgScore >= 75 ? T.green : r.avgScore >= 50 ? T.yellow : T.red }}>{r.avgScore}</td>
-              <td style={{ padding: '6px', textAlign: 'right', color: T.sb }}>{r.avgLatency}</td>
+              <td style={{ padding: '6px', textAlign: 'right', color: T.sb }}>{r.p50Latency}</td>
               <td style={{ padding: '6px', textAlign: 'right', color: T.sb }}>{r.turns}</td>
               <td style={{ padding: '6px', color: T.sb, fontFamily: MN, fontSize: 11 }}>{r.topModel}</td>
             </tr>
@@ -1297,37 +1313,79 @@ export default function GEMTaskadeClone() {
     });
   }, [loaded]);
 
-  // ─── Supabase Realtime subscriptions (projects, tasks, agent_grades) ───
+  // ─── Supabase Realtime subscriptions ───
+  // Current SPA state uses local uid() ids and persists through the kv table,
+  // not relational projects/tasks. These subscriptions are therefore active
+  // only for installations that have migrated the SPA onto relational IDs
+  // (future Phase 3). Until then, task/project events arrive but no-op
+  // because row.project_id won't match any SPA project.
   const [recentGrades, setRecentGrades] = useState([]);
+  // Normalize a Postgres row to the camelCase shape App.jsx task UI expects.
+  const toUiTask = (row) => row && ({
+    ...row,
+    dueDate: row.due_date ?? row.dueDate ?? null,
+    subtasks: row.subtasks ?? [],
+    tags: row.tags ?? [],
+  });
   useEffect(() => {
     const sb = window.__gem?.supabase;
     if (!sb || !loaded) return;
     const unsubs = [
-      // Live task + project updates land straight into state without refresh.
       subscribeTable(sb, 'tasks', '', (payload) => {
-        const row = payload.new || payload.old;
+        // DELETE payloads often carry only `old` with the primary key.
+        if (payload.eventType === 'DELETE') {
+          const old = payload.old || {};
+          setTasksById(prev => {
+            const next = { ...prev };
+            for (const [pid, list] of Object.entries(prev)) {
+              if (!old.project_id || old.project_id === pid) {
+                next[pid] = list.filter(t => t.id !== old.id);
+              }
+            }
+            return next;
+          });
+          return;
+        }
+        const row = toUiTask(payload.new);
         if (!row?.project_id) return;
         setTasksById(prev => {
           const list = prev[row.project_id] || [];
-          if (payload.eventType === 'DELETE') return { ...prev, [row.project_id]: list.filter(t => t.id !== row.id) };
           const next = list.filter(t => t.id !== row.id);
-          if (payload.eventType !== 'DELETE') next.push(row);
+          next.push(row);
           return { ...prev, [row.project_id]: next };
         });
       }),
-      // Keep a rolling window of recent agent grades for the observability tile.
+      // Projects — also only effective in relational mode (Phase 3).
+      subscribeTable(sb, 'projects', '', (payload) => {
+        if (!payload.new) return;
+        setWorkspaces(prev => prev.map(w => w.id === payload.new.workspace_id
+          ? { ...w, projects: [payload.new, ...w.projects.filter(p => p.id !== payload.new.id)] }
+          : w));
+      }),
+      // Agent grades — merge into state so initial query race doesn't drop
+      // a realtime INSERT that landed first (Sourcery #15).
       subscribeTable(sb, 'agent_grades', '', (payload) => {
         if (payload.eventType !== 'INSERT') return;
-        setRecentGrades(prev => [payload.new, ...prev].slice(0, 20));
+        setRecentGrades(prev => {
+          if (prev.some(g => g.id === payload.new.id)) return prev;
+          return [payload.new, ...prev].slice(0, 20);
+        });
       }),
     ];
-    // Seed the grade tile with the last 20 rows at mount time.
-    sb.from('agent_grades').select('agent_id,score,model_used,latency_ms,created_at')
+    // Seed the grade tile. Merge with any realtime rows already received.
+    sb.from('agent_grades').select('id,agent_id,score,model_used,latency_ms,created_at')
       .order('created_at', { ascending: false }).limit(20)
-      .then(({ data, error }) => { if (!error && data) setRecentGrades(data); });
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        setRecentGrades(prev => {
+          const seen = new Set(prev.map(g => g.id).filter(Boolean));
+          const merged = [...prev, ...data.filter(g => !seen.has(g.id))];
+          return merged.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 20);
+        });
+      });
     return () => unsubs.forEach(u => u && u());
   }, [loaded]);
-  window.__gem_recentGrades = recentGrades; // dev-tools inspection; AgentHealthTile reads via prop below
+  window.__gem_recentGrades = recentGrades; // dev-tools inspection
 
   const setProjectTasks = (projectId, tasks) => {
     setTasksById(prev => ({...prev, [projectId]: tasks}));

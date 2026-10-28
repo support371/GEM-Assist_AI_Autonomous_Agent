@@ -61,18 +61,27 @@ async function embed(texts) {
 }
 
 async function insertChunks(rows) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/knowledge_base`, {
+  // Upsert on (source, chunk_index) so re-ingesting a doc replaces its
+  // old chunks instead of accumulating duplicates (Sourcery #4).
+  // Requires the unique index from migrations/002_phase2_concurrency.sql.
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/knowledge_base?on_conflict=source,chunk_index`, {
     method: 'POST',
     headers: {
       apikey: SUPABASE_SERVICE_KEY,
       authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
       'content-type': 'application/json',
-      prefer: 'return=minimal',
+      prefer: 'return=minimal,resolution=merge-duplicates',
     },
     body: JSON.stringify(rows),
   });
   if (!res.ok) throw new Error(`insert ${res.status}: ${await res.text()}`);
 }
+
+// SECURITY NOTE: the Worker's rag_search skill reads from this table using
+// the service key, and /agent/:name is callable by any origin on the
+// ALLOWED_ORIGINS allowlist. Only ingest documents you are willing to
+// have the agent surface to anyone who can hit /agent/*. Tenant scoping
+// is a Phase 3 item.
 
 for (const file of files) {
   const abs = path.resolve(file);
@@ -88,6 +97,7 @@ for (const file of files) {
     const vectors = await embed(batch);
     const rows = batch.map((c, j) => ({
       source,
+      chunk_index: i + j,  // part of the (source, chunk_index) upsert key
       chunk: c,
       embedding: vectors[j],
       metadata: { file: path.basename(file), chunk_index: i + j, char_offset: (i + j) * (CHUNK_CHARS - OVERLAP_CHARS) },

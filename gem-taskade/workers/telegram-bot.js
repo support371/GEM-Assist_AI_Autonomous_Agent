@@ -77,6 +77,7 @@ export default {
 
     // /publish · admin-guarded channel post
     if (path === '/publish' && request.method === 'POST') {
+      if (!env.ADMIN_SECRET) return new Response('Server misconfigured', { status: 503 });
       if (request.headers.get('authorization') !== `Bearer ${env.ADMIN_SECRET}`) return new Response('Forbidden', { status: 403 });
       const body = await request.json();
       return json(await postToChannel(env, body.text, body.photo_url));
@@ -84,6 +85,9 @@ export default {
 
     // /embed · bge-base embeddings (admin-guarded, powers ingest-knowledge.mjs)
     if (path === '/embed' && request.method === 'POST') {
+      // Reject if admin secret isn't configured — otherwise 'Bearer undefined'
+      // from a bad deploy would let any caller consume the Workers AI quota.
+      if (!env.ADMIN_SECRET) return new Response('Server misconfigured', { status: 503 });
       if (request.headers.get('authorization') !== `Bearer ${env.ADMIN_SECRET}`) return new Response('Forbidden', { status: 403 });
       try {
         const body = await request.json();
@@ -270,17 +274,20 @@ async function latestContentItem(env) {
 async function runMemoryRollup(env) {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return;
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const rows = await sbRequest(env, `agent_conversations?updated_at=gte.${since}&select=agent_id,owner_id,messages,updated_at`);
+  const until = new Date().toISOString();
+  // Read append-only turns written by Memory.appendShortTerm (new schema).
+  const rows = await sbRequest(env, `agent_conversation_turns?created_at=gte.${since}&select=agent_id,owner_id,role,content,created_at&order=created_at.asc`);
   if (!Array.isArray(rows) || rows.length === 0) return;
   const groups = new Map();
   for (const r of rows) {
     const key = `${r.agent_id}::${r.owner_id || 'anonymous'}`;
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(...(r.messages || []));
+    groups.get(key).push({ role: r.role, content: r.content });
   }
   for (const [key, msgs] of groups) {
     if (msgs.length < 4) continue;
-    const [agent_id, owner_id] = key.split('::');
+    const [agent_id, owner_raw] = key.split('::');
+    const owner_id = owner_raw === 'anonymous' ? null : owner_raw;
     const transcript = msgs.slice(-30).map(m => `${m.role}: ${String(m.content).slice(0, 300)}`).join('\n');
     const prompt = `Summarize this agent↔user exchange in <=120 words. Keep decisions, blockers, open questions, named entities. Omit greetings.\n\n${transcript}`;
     try {
@@ -290,8 +297,8 @@ async function runMemoryRollup(env) {
       const summary = resp?.content?.[0]?.text?.trim();
       if (!summary) continue;
       await sbRequest(env, 'agent_summaries', 'POST', {
-        agent_id, owner_id: owner_id === 'anonymous' ? null : owner_id,
-        summary, period_start: since, period_end: new Date().toISOString(), model_used: resp.model,
+        agent_id, owner_id,
+        summary, period_start: since, period_end: until, model_used: resp.model,
       });
     } catch (err) {
       console.error('[rollup] failed for', key, err?.message || err);
