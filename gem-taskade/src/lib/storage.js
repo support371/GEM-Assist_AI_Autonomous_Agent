@@ -30,40 +30,68 @@ const localAdapter = {
   },
 };
 
+// Supabase returns {data, error} — error must become a throw so wrap() falls back.
+const check = (res, op) => { if (res.error) throw new Error(`[sb ${op}] ${res.error.message || res.error}`); return res; };
+
 const sbAdapter = {
   async get(k) {
-    const { data } = await sb.from('kv').select('value').eq('key', k).maybeSingle();
+    const { data } = check(await sb.from('kv').select('value').eq('key', k).maybeSingle(), 'get');
     return data ? { value: typeof data.value === 'string' ? data.value : JSON.stringify(data.value) } : null;
   },
   async set(k, v) {
     const parsed = (() => { try { return JSON.parse(v); } catch { return v; } })();
-    const { error } = await sb.from('kv').upsert({ key: k, value: parsed, updated_at: new Date().toISOString() });
-    return !error;
+    check(await sb.from('kv').upsert({ key: k, value: parsed, updated_at: new Date().toISOString() }), 'set');
+    return true;
   },
   async delete(k) {
-    const { error } = await sb.from('kv').delete().eq('key', k);
-    return !error;
+    check(await sb.from('kv').delete().eq('key', k), 'delete');
+    return true;
   },
   async list(prefix) {
     const q = sb.from('kv').select('key');
-    const { data } = prefix ? await q.like('key', `${prefix}%`) : await q;
+    const { data } = check(prefix ? await q.like('key', `${prefix}%`) : await q, 'list');
     return { keys: (data || []).map(r => r.key) };
   },
 };
 
+// ─── Cross-tab sync via BroadcastChannel ───
+// Any write broadcasts the key; other tabs re-fetch that key from Supabase.
+// On single-tab or BC-unavailable, this is a no-op.
+let bc = null;
+try { bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('gem-taskade') : null; } catch { bc = null; }
+
+export function broadcastKey(key) {
+  try { bc?.postMessage({ type: 'kv:change', key, ts: Date.now() }); } catch {}
+}
+
+export function onKeyChange(handler) {
+  if (!bc) return () => {};
+  const fn = (ev) => { if (ev.data?.type === 'kv:change') handler(ev.data.key); };
+  bc.addEventListener('message', fn);
+  return () => bc.removeEventListener('message', fn);
+}
+
 export function installStorage() {
   // Resilient wrapper: tries Supabase first, falls back to localStorage on any error
+  // (both thrown exceptions AND returned {error} responses — see check() above).
   const primary = sb ? sbAdapter : localAdapter;
   const fallback = localAdapter;
   const wrap = (method) => async (...args) => {
-    try { return await primary[method](...args); }
-    catch { return await fallback[method](...args); }
+    try {
+      const result = await primary[method](...args);
+      if ((method === 'set' || method === 'delete') && args[0]) broadcastKey(args[0]);
+      return result;
+    } catch (err) {
+      console.warn(`[storage] primary ${method} fell back:`, err?.message || err);
+      return await fallback[method](...args);
+    }
   };
   window.storage = {
     get: wrap('get'),
     set: wrap('set'),
     delete: wrap('delete'),
     list: wrap('list'),
+    onKeyChange,  // Lets App.jsx subscribe to cross-tab mutations.
   };
   window.__gem = { supabase: sb, backend: sb ? 'supabase' : 'local' };
 }
