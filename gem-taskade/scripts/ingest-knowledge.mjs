@@ -12,6 +12,8 @@
  *
  * Options via env:
  *   SOURCE_NAME     logical source label stored on each chunk (default: filename)
+ *   WORKSPACE_ID    uuid of the workspace that owns these docs. Omit for
+ *                   globally-visible chunks (seen by every /agent/* caller).
  *   CHUNK_CHARS     chunk size (default 1800 chars ≈ ~450 tokens)
  *   OVERLAP_CHARS   chunk overlap (default 200)
  *   BATCH           chunks per /embed call (default 16, Workers AI accepts arrays)
@@ -31,6 +33,7 @@ const CHUNK_CHARS = Number(process.env.CHUNK_CHARS || 1800);
 const OVERLAP_CHARS = Number(process.env.OVERLAP_CHARS || 200);
 const BATCH = Number(process.env.BATCH || 16);
 const DRY_RUN = process.env.DRY_RUN === '1';
+const WORKSPACE_ID = process.env.WORKSPACE_ID || null;  // omit for globals
 
 const files = process.argv.slice(2);
 if (!files.length) {
@@ -61,10 +64,14 @@ async function embed(texts) {
 }
 
 async function insertChunks(rows) {
-  // Upsert on (source, chunk_index) so re-ingesting a doc replaces its
-  // old chunks instead of accumulating duplicates (Sourcery #4).
-  // Requires the unique index from migrations/002_phase2_concurrency.sql.
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/knowledge_base?on_conflict=source,chunk_index`, {
+  // Upsert on (COALESCE(workspace_id, zero_uuid), source, chunk_index) so
+  // re-ingesting a doc replaces its OWN chunks and never clobbers another
+  // scope's copy. Requires migrations/003_phase3_auth_scoping.sql, which
+  // dropped the Phase-2 (source, chunk_index) index for exactly this reason.
+  //
+  // PostgREST on_conflict uses column names; it resolves to the
+  // idx_kb_scope_source_chunk unique expression index.
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/knowledge_base?on_conflict=workspace_id,source,chunk_index`, {
     method: 'POST',
     headers: {
       apikey: SUPABASE_SERVICE_KEY,
@@ -100,6 +107,7 @@ for (const file of files) {
       chunk_index: i + j,  // part of the (source, chunk_index) upsert key
       chunk: c,
       embedding: vectors[j],
+      workspace_id: WORKSPACE_ID,
       metadata: { file: path.basename(file), chunk_index: i + j, char_offset: (i + j) * (CHUNK_CHARS - OVERLAP_CHARS) },
     }));
     await insertChunks(rows);

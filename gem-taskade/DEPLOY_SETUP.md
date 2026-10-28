@@ -29,8 +29,9 @@ wrangler secret put ALLOWED_ORIGINS       # https://your-app.vercel.app
 wrangler secret put GEMINI_API_KEY        # aistudio.google.com/apikey
 wrangler secret put GROQ_API_KEY          # console.groq.com/keys
 
-# Supabase (for bot history + agent memory)
+# Supabase (for bot history + agent memory + /agent/* JWT verification)
 wrangler secret put SUPABASE_URL
+wrangler secret put SUPABASE_ANON_KEY       # Phase 3: /agent/* JWT verification
 wrangler secret put SUPABASE_SERVICE_KEY
 
 node prebuild.mjs                      # JSONC → JSON for bundler

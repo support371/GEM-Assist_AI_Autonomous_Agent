@@ -83,6 +83,7 @@ jobs:
             GEMINI_API_KEY
             GROQ_API_KEY
             SUPABASE_URL
+            SUPABASE_ANON_KEY
             SUPABASE_SERVICE_KEY
         env:
           TG_BOT_TOKEN:         ${{ secrets.TG_BOT_TOKEN }}
@@ -93,6 +94,7 @@ jobs:
           GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY:         ${{ secrets.GROQ_API_KEY }}
           SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY:    ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
   # ────────────────────────────────────────────────

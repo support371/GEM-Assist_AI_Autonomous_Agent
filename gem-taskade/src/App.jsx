@@ -41,7 +41,14 @@ const DB = {
   async d(k){try{await window.storage.delete(k);return true}catch{return false}},
 };
 
-function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+// UUID-shape ids so they align with Supabase relational tables when the SPA
+// later writes through supabase.rpc('create_project_with_tasks', ...). Falls
+// back to a 36-char synthetic uuid where crypto.randomUUID is unavailable.
+function uid(){
+  try { if (crypto?.randomUUID) return crypto.randomUUID(); } catch {}
+  const hex = () => Math.floor(Math.random()*0x100000000).toString(16).padStart(8,'0');
+  return `${hex()}-${hex().slice(0,4)}-4${hex().slice(0,3)}-${(8+Math.floor(Math.random()*4)).toString(16)}${hex().slice(0,3)}-${hex()}${hex().slice(0,4)}`;
+}
 
 // ═══ SEED DATA — matches your screenshot: GEM Assists workspace ════════════
 const SEED_WORKSPACES = [
@@ -137,9 +144,30 @@ async function callAgent(agentName, message, userId) {
   // Never falls back to the shared 'anonymous' string — that bled facts
   // across visitors (Sourcery #5).
   const uid = userId || window.__gem?.userId || tabFallbackUid();
+
+  // Attach the Supabase session JWT so the Worker can verify auth and
+  // enforce workspace-scoped knowledge retrieval. Falls back to anonymous
+  // (global knowledge only) when there's no Supabase session.
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const sb = window.__gem?.supabase;
+    if (sb) {
+      const { data } = await sb.auth.getSession();
+      const token = data?.session?.access_token;
+      if (token) headers.authorization = `Bearer ${token}`;
+    }
+    // Only send the workspace header when it looks like a UUID — a seeded
+    // 'ws1'-style ID would be rejected by the UUID-typed RPC parameter
+    // and would blank out the whole rag_search response.
+    const wsId = window.__gem?.activeWorkspaceId;
+    if (wsId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(wsId)) {
+      headers['x-gem-workspace'] = wsId;
+    }
+  } catch {}
+
   const res = await fetch(`${AGENT_ENDPOINT}/${encodeURIComponent(agentName)}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ message, user_id: uid }),
   });
   if (!res.ok) throw new Error(`agent ${res.status}`);
@@ -1297,6 +1325,8 @@ export default function GEMTaskadeClone() {
   // Persist on change
   useEffect(() => { if (loaded) DB.s('taskade:workspaces', workspaces); }, [workspaces, loaded]);
   useEffect(() => { if (loaded) DB.s('taskade:tasks', tasksById); }, [tasksById, loaded]);
+  // Expose the current workspace id for callAgent → Worker header mapping.
+  useEffect(() => { window.__gem = { ...(window.__gem || {}), activeWorkspaceId: activeWs?.id || null }; }, [activeWs]);
 
   // ─── Cross-tab sync via BroadcastChannel (set up by storage adapter) ───
   // Another tab wrote to kv — refetch the affected key so this tab stays current.
