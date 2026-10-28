@@ -1,0 +1,33 @@
+{
+  "name": "gem-taskade",
+  "private": true,
+  "version": "1.0.0",
+  "description": "GEM Enterprise \u00b7 Taskade clone \u00b7 Vercel + Supabase + Cloudflare Workers",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "worker:dev": "npm run agents:build && wrangler dev workers/telegram-bot.js --config workers/wrangler.toml",
+    "worker:deploy": "npm run agents:build && wrangler deploy workers/telegram-bot.js --config workers/wrangler.toml",
+    "db:push": "psql $DATABASE_URL -f supabase/schema.sql",
+    "agents:build": "node workers/prebuild.mjs",
+    "smoke": "node scripts/smoke-test.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "lucide-react": "^0.439.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.1",
+    "wrangler": "^3.78.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
