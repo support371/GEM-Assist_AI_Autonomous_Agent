@@ -108,8 +108,25 @@ export async function runAgent({ agentName, userText, userId, env, ctx }) {
     } catch {}
   }
 
-  // 7. Persist memory (background)
+  // 7. Grade (needed by persist task below)
+  const grade = gradeResponse(finalText, Date.now() - t0);
+
+  // 8. Persist memory + grade (background)
   const persistTask = (async () => {
+    // Grade row — always written, independent of memory_scope
+    try {
+      await mem._sb('agent_grades', 'POST', {
+        agent_id: def.name,
+        owner_id: userId,
+        score: grade.score,
+        model_used: response.model,
+        latency_ms: grade.latency_ms,
+        input_tokens: response.usage?.input_tokens ?? null,
+        output_tokens: response.usage?.output_tokens ?? null,
+      });
+    } catch (err) {
+      console.error('[agent] grade persist failed:', err?.message || err);
+    }
     if (def.memory_scope === 'none') return;
     await mem.appendShortTerm('user', userText);
     await mem.appendShortTerm('assistant', finalText);
@@ -120,9 +137,6 @@ export async function runAgent({ agentName, userText, userId, env, ctx }) {
   })();
   if (ctx?.waitUntil) ctx.waitUntil(persistTask);
   else await persistTask;
-
-  // 8. Grade
-  const grade = gradeResponse(finalText, Date.now() - t0);
 
   return {
     content: [{ type: 'text', text: finalText }],

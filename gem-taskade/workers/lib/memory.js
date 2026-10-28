@@ -103,10 +103,17 @@ export class Memory {
         },
         body: body ? JSON.stringify(body) : undefined,
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        console.error(`[memory] supabase ${method} ${path} failed: ${res.status} ${errBody.slice(0, 200)}`);
+        return null;
+      }
       const t = await res.text();
       return t ? JSON.parse(t) : null;
-    } catch { return null; }
+    } catch (err) {
+      console.error(`[memory] supabase ${method} ${path} threw:`, err?.message || err);
+      return null;
+    }
   }
 }
 

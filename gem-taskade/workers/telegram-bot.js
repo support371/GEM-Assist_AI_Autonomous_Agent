@@ -233,9 +233,13 @@ async function sbRequest(env, path, method = 'GET', body) {
   } catch { return null; }
 }
 async function trackSubscriber(env, msg) {
+  // Read current count, then upsert with count+1 (upsert without a read would
+  // reset the field; Supabase REST does not support column-expression updates).
+  const existing = await sbRequest(env, `tg_subscribers?chat_id=eq.${msg.chat.id}&select=message_count`);
+  const nextCount = (existing?.[0]?.message_count ?? 0) + 1;
   return sbRequest(env, 'tg_subscribers', 'POST', {
     chat_id: msg.chat.id, username: msg.from?.username,
-    last_message: new Date().toISOString(), message_count: 1,
+    last_message: new Date().toISOString(), message_count: nextCount,
   });
 }
 async function logMessage(env, chatId, direction, content, model) {

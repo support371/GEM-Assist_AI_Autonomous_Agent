@@ -27,8 +27,10 @@ jobs:
       - run: cd gem-taskade && npm run agents:build
       - name: Syntax check workers
         run: |
+          set -e
           for f in gem-taskade/workers/telegram-bot.js gem-taskade/workers/lib/*.js gem-taskade/workers/prebuild.mjs; do
-            node --check "$f" && echo "✓ $f"
+            node --check "$f"
+            echo "✓ $f"
           done
 
   # ────────────────────────────────────────────────
