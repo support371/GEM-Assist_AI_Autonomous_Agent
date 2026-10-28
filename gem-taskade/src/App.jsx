@@ -1,5 +1,16 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { subscribeTable } from "./lib/realtime.js";
+import { sendMagicLink, signOut } from "./lib/auth.js";
+import {
+  loadAll as repoLoadAll,
+  createWorkspace as repoCreateWorkspace,
+  createProject as repoCreateProject,
+  createProjectWithTasks as repoCreateProjectWithTasks,
+  upsertTask as repoUpsertTask,
+  deleteTask as repoDeleteTask,
+  deleteProject as repoDeleteProject,
+  deleteWorkspace as repoDeleteWorkspace,
+} from "./lib/repo.js";
 import {
   Plus, Search, ChevronDown, ChevronRight, MoreHorizontal, Users, Settings,
   Grid3x3, Share2, Bot, Sparkles, LayoutGrid, List as ListIcon, Columns3,
@@ -51,63 +62,11 @@ function uid(){
 }
 
 // ═══ SEED DATA — matches your screenshot: GEM Assists workspace ════════════
-const SEED_WORKSPACES = [
-  {
-    id:'ws1', name:'Workspace', emoji:'🔺', color:T.coral, isPersonal:true, memberCount:1,
-    projects:[
-      {id:'p1', name:'Home', emoji:'🏠', color:T.coral, cover:'coral', favorite:true, members:1, lastActive:Date.now()-120000},
-      {id:'p2', name:'GEM Assists', emoji:'G', color:T.blue, cover:'blue', favorite:true, members:1, lastActive:Date.now()-240000},
-    ],
-    folders:[],
-  },
-  {
-    id:'ws2', name:'GEM Enterprise', emoji:'G', color:T.purple, isPersonal:false, memberCount:4,
-    projects:[
-      {id:'p3', name:'OpenGuardians Roadmap', emoji:'🛡️', color:T.purple, cover:'purple', favorite:true, members:4, lastActive:Date.now()-600000},
-      {id:'p4', name:'Nexus Financial', emoji:'💎', color:T.green, cover:'green', favorite:false, members:3, lastActive:Date.now()-3600000},
-      {id:'p5', name:'Alliance Trust Realty', emoji:'🏢', color:T.yellow, cover:'yellow', favorite:false, members:2, lastActive:Date.now()-86400000},
-      {id:'p6', name:'eSIM Platform', emoji:'📡', color:T.blue, cover:'blue', favorite:false, members:2, lastActive:Date.now()-172800000},
-    ],
-    folders:[
-      {id:'f1', name:'Infrastructure', projects:['p3','p4']},
-      {id:'f2', name:'Business', projects:['p5','p6']},
-    ],
-  },
-];
-
-const SEED_TASKS = {
-  p1: [
-    {id:'t1', title:'Welcome to GEM Assists', completed:false, priority:'medium', assignee:'Gem', dueDate:'2026-11-01', tags:['welcome'], notes:'Start building your workspace', subtasks:[]},
-    {id:'t2', title:'Create your first project', completed:true, priority:'high', assignee:'Gem', dueDate:'2026-10-27', tags:['onboarding'], notes:'', subtasks:[]},
-    {id:'t3', title:'Invite teammates', completed:false, priority:'low', assignee:null, dueDate:null, tags:['team'], notes:'', subtasks:[]},
-  ],
-  p2: [
-    {id:'t4', title:'Set up Telegram bot integration', completed:false, priority:'high', assignee:'Gem', dueDate:'2026-10-30', tags:['bot','telegram'], notes:'@MyGemAssist_Bot → @mycybersecureWealthsolution', subtasks:[
-      {id:'st1', title:'Register bot with BotFather', completed:true},
-      {id:'st2', title:'Set webhook endpoint', completed:true},
-      {id:'st3', title:'Deploy to Cloudflare Workers', completed:false},
-    ]},
-    {id:'t5', title:'Build FAQ hub with AI answers', completed:false, priority:'high', assignee:'Gem', dueDate:'2026-11-05', tags:['ai','docs'], notes:'Use Claude Opus 4.7 for Q&A', subtasks:[]},
-    {id:'t6', title:'Connect Supabase for persistence', completed:true, priority:'high', assignee:'Gem', dueDate:'2026-10-25', tags:['backend'], notes:'Free tier: 500MB DB, unlimited API', subtasks:[]},
-    {id:'t7', title:'Design workspace views (List/Board/Mind Map)', completed:false, priority:'medium', assignee:'Gem', dueDate:'2026-11-10', tags:['design','frontend'], notes:'', subtasks:[]},
-    {id:'t8', title:'Automate daily digest publishing', completed:false, priority:'medium', assignee:'Gem', dueDate:'2026-11-15', tags:['automation'], notes:'Schedule: 0 7 * * *', subtasks:[]},
-  ],
-  p3: [
-    {id:'t9', title:'RBAC middleware audit', completed:false, priority:'high', assignee:'Gem', dueDate:'2026-10-31', tags:['security','auth'], notes:'', subtasks:[]},
-    {id:'t10', title:'Threat intelligence feed integration', completed:false, priority:'high', assignee:'A. Chen', dueDate:'2026-11-05', tags:['intel'], notes:'CISA + Krebs feeds', subtasks:[]},
-    {id:'t11', title:'SOC dashboard v3 wireframes', completed:true, priority:'medium', assignee:'M. Torres', dueDate:'2026-10-20', tags:['design'], notes:'', subtasks:[]},
-  ],
-  p4: [
-    {id:'t12', title:'Double-entry ledger v2 migration', completed:false, priority:'high', assignee:'Gem', dueDate:'2026-11-15', tags:['ledger'], notes:'', subtasks:[]},
-    {id:'t13', title:'KYC document processor', completed:true, priority:'high', assignee:'Gem', dueDate:'2026-10-15', tags:['kyc'], notes:'', subtasks:[]},
-  ],
-  p5: [
-    {id:'t14', title:'Zillow listing sync automation', completed:false, priority:'medium', assignee:'Gem', dueDate:'2026-11-20', tags:['automation'], notes:'', subtasks:[]},
-  ],
-  p6: [
-    {id:'t15', title:'BOSS API order fulfillment pipeline', completed:true, priority:'high', assignee:'Gem', dueDate:'2026-10-10', tags:['api'], notes:'', subtasks:[]},
-  ],
-};
+// Public-ready build: NO seed workspaces, NO seed tasks. A new visitor
+// signs in and is handed an empty state they fill themselves. The first
+// workspace is created explicitly through the onboarding flow.
+const EMPTY_WORKSPACES = [];
+const EMPTY_TASKS = {};
 
 
 // ─── Claude API client (routes through Cloudflare Worker proxy or direct) ───
@@ -324,6 +283,139 @@ const IconBtn = ({icon:I, onClick, active, size=16, title, style}) => <button
 ><I size={size}/></button>;
 
 // ═══ SIDEBAR (Taskade's left nav) ══════════════════════════════════════════
+// ─── Sign-in gate ───────────────────────────────────────────────
+// Full-screen gate shown when there is no active Supabase session.
+// Minimal: email → magic link, no password, no third-party OAuth.
+function SignInGate({ onSignedIn }) {
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState('idle'); // idle | sending | sent | error
+  const [error, setError] = useState('');
+
+  const submit = async (e) => {
+    e?.preventDefault?.();
+    if (!email || !/.+@.+\..+/.test(email)) { setError('Enter a valid email'); return; }
+    setStatus('sending'); setError('');
+    try {
+      await sendMagicLink(email);
+      setStatus('sent');
+    } catch (err) {
+      setStatus('error');
+      setError(err?.message || 'Could not send link. Supabase anonymous or email provider may be disabled.');
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: T.bg, color: T.tx,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: FT, zIndex: 10000,
+      backgroundImage: T.glow,
+    }}>
+      <div style={{
+        width: 420, background: T.card, border: `1px solid ${T.bd}`,
+        borderRadius: 14, padding: 32, boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
+      }}>
+        <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Sign in to GEM Assists</div>
+        <div style={{ fontSize: 13, color: T.sb, marginBottom: 24 }}>
+          Enter your email to receive a one-time sign-in link. No password required.
+        </div>
+        {status === 'sent' ? (
+          <div style={{
+            padding: '14px 16px', borderRadius: 8, border: `1px solid ${T.bd}`,
+            background: T.surf, fontSize: 13, color: T.tx,
+          }}>
+            Check <b>{email}</b> for a sign-in link. The link opens this page already signed in.
+            <div style={{ marginTop: 12, fontSize: 12, color: T.sb }}>
+              Didn't arrive? Check spam, or <a href="#" onClick={(e) => { e.preventDefault(); setStatus('idle'); }} style={{ color: T.coral }}>try a different email</a>.
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            <input
+              type="email"
+              autoFocus
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              style={{
+                width: '100%', background: T.surf, border: `1px solid ${T.bd}`,
+                borderRadius: 8, padding: '12px 14px', color: T.tx,
+                fontSize: 14, outline: 'none', marginBottom: 12, boxSizing: 'border-box',
+              }}
+            />
+            {error && (
+              <div style={{ color: T.red, fontSize: 12, marginBottom: 12 }}>{error}</div>
+            )}
+            <button type="submit" disabled={status === 'sending'} style={{
+              width: '100%', background: T.coral, color: '#fff', border: 'none',
+              borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 600,
+              cursor: status === 'sending' ? 'wait' : 'pointer',
+              opacity: status === 'sending' ? 0.7 : 1,
+            }}>
+              {status === 'sending' ? 'Sending link…' : 'Send sign-in link'}
+            </button>
+          </form>
+        )}
+        <div style={{ marginTop: 20, fontSize: 11, color: T.dm, textAlign: 'center' }}>
+          Your workspaces are private to your account. Nothing is shared with other users.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Onboarding — first workspace creator ───────────────────────
+function OnboardingPanel({ onCreate }) {
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e?.preventDefault?.();
+    const n = name.trim();
+    if (!n) return;
+    setBusy(true);
+    try { await onCreate({ name: n, emoji: '🔺', color: T.coral }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      minHeight: '100vh', fontFamily: FT, color: T.tx, padding: 24,
+      backgroundImage: T.glow,
+    }}>
+      <div style={{
+        width: 480, background: T.card, border: `1px solid ${T.bd}`,
+        borderRadius: 14, padding: 32,
+      }}>
+        <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Create your first workspace</div>
+        <div style={{ fontSize: 13, color: T.sb, marginBottom: 24 }}>
+          A workspace holds your projects and tasks. You can rename, invite teammates, or create more later.
+        </div>
+        <form onSubmit={submit}>
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. My workspace"
+            style={{
+              width: '100%', background: T.surf, border: `1px solid ${T.bd}`,
+              borderRadius: 8, padding: '12px 14px', color: T.tx,
+              fontSize: 14, outline: 'none', marginBottom: 12, boxSizing: 'border-box',
+            }}
+          />
+          <button type="submit" disabled={busy || !name.trim()} style={{
+            width: '100%', background: T.coral, color: '#fff', border: 'none',
+            borderRadius: 8, padding: '12px 14px', fontSize: 14, fontWeight: 600,
+            cursor: (busy || !name.trim()) ? 'not-allowed' : 'pointer',
+            opacity: (busy || !name.trim()) ? 0.6 : 1,
+          }}>
+            {busy ? 'Creating…' : 'Create workspace'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function Sidebar({workspaces, activeWs, setActiveWs, activeView, setActiveView, activeProject, setActiveProject, onCreateProject}) {
   const[expWs, setExpWs] = useState({[activeWs?.id]:true});
 
@@ -1304,25 +1396,54 @@ function TemplatesView() {
 
 // ═══ MAIN APP ══════════════════════════════════════════════════════════════
 export default function GEMTaskadeClone() {
-  const[workspaces, setWorkspaces] = useState(SEED_WORKSPACES);
-  const[tasksById, setTasksById] = useState(SEED_TASKS);
-  const[activeWs, setActiveWs] = useState(SEED_WORKSPACES[0]);
-  const[activeView, setActiveView] = useState('home');
-  const[activeProject, setActiveProject] = useState(null);
-  const[loaded, setLoaded] = useState(false);
+  const [workspaces, setWorkspaces] = useState(EMPTY_WORKSPACES);
+  const [tasksById, setTasksById] = useState(EMPTY_TASKS);
+  const [activeWs, setActiveWs] = useState(null);
+  const [activeView, setActiveView] = useState('home');
+  const [activeProject, setActiveProject] = useState(null);
+  const [loaded, setLoaded] = useState(false);
 
-  // Load persisted
+  // Auth state: null = loading, false = signed out, string = user id
+  const [userId, setUserId] = useState(null);
+  const sb = typeof window !== 'undefined' ? window.__gem?.supabase : null;
+
+  // ─── Auth state wiring ───
+  // If Supabase isn't configured at all (static preview, missing envs), fall
+  // through to local-only mode so the UI still boots. Prod always has it.
   useEffect(() => {
+    if (!sb) { setUserId(window.__gem?.userId || 'local-' + Math.random().toString(36).slice(2, 10)); return; }
+    let active = true;
+    sb.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      setUserId(data?.session?.user?.id || false);
+    });
+    const { data: sub } = sb.auth.onAuthStateChange((_evt, session) => {
+      setUserId(session?.user?.id || false);
+    });
+    return () => { active = false; sub?.subscription?.unsubscribe?.(); };
+  }, [sb]);
+
+  // ─── Load user's workspaces + tasks from Supabase relational tables ───
+  useEffect(() => {
+    if (!userId) { setLoaded(false); return; }
     (async () => {
-      const w = await DB.g('taskade:workspaces');
-      const t = await DB.g('taskade:tasks');
-      if (w) { setWorkspaces(w); setActiveWs(w[0]); }
-      if (t) setTasksById(t);
+      try {
+        const { workspaces: wsRows, tasksById: tMap } = await repoLoadAll();
+        setWorkspaces(wsRows);
+        setTasksById(tMap);
+        setActiveWs(wsRows[0] || null);
+      } catch (err) {
+        console.warn('[app] relational load failed, falling back to kv:', err?.message || err);
+        const w = await DB.g('taskade:workspaces');
+        const t = await DB.g('taskade:tasks');
+        setWorkspaces(w || []); setTasksById(t || {}); setActiveWs((w || [])[0] || null);
+      }
       setLoaded(true);
     })();
-  }, []);
+  }, [userId]);
 
-  // Persist on change
+  // Local kv mirror — purely a cache for offline reads of the SPA shell.
+  // Authoritative state lives in Supabase relational tables.
   useEffect(() => { if (loaded) DB.s('taskade:workspaces', workspaces); }, [workspaces, loaded]);
   useEffect(() => { if (loaded) DB.s('taskade:tasks', tasksById); }, [tasksById, loaded]);
   // Expose the current workspace id for callAgent → Worker header mapping.
@@ -1344,11 +1465,9 @@ export default function GEMTaskadeClone() {
   }, [loaded]);
 
   // ─── Supabase Realtime subscriptions ───
-  // Current SPA state uses local uid() ids and persists through the kv table,
-  // not relational projects/tasks. These subscriptions are therefore active
-  // only for installations that have migrated the SPA onto relational IDs
-  // (future Phase 3). Until then, task/project events arrive but no-op
-  // because row.project_id won't match any SPA project.
+  // Phase 4: SPA now writes to relational workspaces/projects/tasks tables,
+  // so Realtime payloads carry rows whose ids match local state. Multi-device
+  // edits merge in without a refresh.
   const [recentGrades, setRecentGrades] = useState([]);
   // Normalize a Postgres row to the camelCase shape App.jsx task UI expects.
   const toUiTask = (row) => row && ({
@@ -1417,41 +1536,109 @@ export default function GEMTaskadeClone() {
   }, [loaded]);
   window.__gem_recentGrades = recentGrades; // dev-tools inspection
 
-  const setProjectTasks = (projectId, tasks) => {
-    setTasksById(prev => ({...prev, [projectId]: tasks}));
+  // ─── Write handlers (go through the relational repo) ───
+  // Each handler applies optimistic UI, then persists via supabase.
+  // Realtime subscription will reconcile any divergence on remote writes.
+
+  const setProjectTasks = async (projectId, tasks) => {
+    const prev = tasksById[projectId] || [];
+    setTasksById(p => ({ ...p, [projectId]: tasks }));
+    // Persist diffs: insert/update new, delete removed.
+    try {
+      const prevIds = new Set(prev.map(t => t.id));
+      const nextIds = new Set(tasks.map(t => t.id));
+      for (const t of tasks) {
+        await repoUpsertTask(t, projectId);
+      }
+      for (const id of prevIds) {
+        if (!nextIds.has(id)) await repoDeleteTask(id);
+      }
+    } catch (err) {
+      console.warn('[tasks] persist failed:', err?.message || err);
+    }
   };
 
-  const createProject = (wsId) => {
+  const createWorkspace = async ({ name, emoji, color }) => {
+    try {
+      const id = await repoCreateWorkspace({ name, emoji, color }, userId);
+      const row = { id, name, emoji, color, isPersonal: true, memberCount: 1, projects: [], folders: [] };
+      setWorkspaces(prev => [...prev, row]);
+      setActiveWs(row);
+      return id;
+    } catch (err) {
+      alert('Could not create workspace: ' + (err?.message || err));
+      throw err;
+    }
+  };
+
+  const createProject = async (wsId) => {
+    const targetWs = wsId || activeWs?.id;
+    if (!targetWs) return;
     const name = prompt('Project name:');
     if (!name) return;
-    const newProject = {
-      id: uid(), name, emoji:'📝', color:T.purple, cover:'purple',
-      favorite:false, members:1, lastActive:Date.now(),
-    };
-    setWorkspaces(prev => prev.map(w => w.id===(wsId||activeWs.id) ? {...w, projects:[newProject, ...w.projects]} : w));
-    setTasksById(prev => ({...prev, [newProject.id]: []}));
+    try {
+      const id = await repoCreateProject({ workspaceId: targetWs, name, emoji: '📝', color: T.purple });
+      const newProject = { id, name, emoji: '📝', color: T.purple, cover: 'purple', favorite: false, members: 1, lastActive: Date.now() };
+      setWorkspaces(prev => prev.map(w => w.id === targetWs ? { ...w, projects: [newProject, ...w.projects] } : w));
+      setTasksById(prev => ({ ...prev, [id]: [] }));
+    } catch (err) {
+      alert('Could not create project: ' + (err?.message || err));
+    }
   };
 
   const handleAIGenerate = async (spec) => {
-    const newProject = {
-      id: uid(), name:spec.name, emoji:spec.emoji||'✨', color:T.purple, cover:'purple',
-      favorite:false, members:1, lastActive:Date.now(),
-    };
-    const tasks = (spec.tasks || []).map(t => ({
-      id:uid(), title:t.title, completed:false, priority:t.priority||'medium',
-      assignee:null, dueDate:null, tags:t.tags||[], notes:'', subtasks:[],
-    }));
-    setWorkspaces(prev => prev.map(w => w.id===activeWs.id ? {...w, projects:[newProject, ...w.projects]} : w));
-    setTasksById(prev => ({...prev, [newProject.id]: tasks}));
-    setActiveProject(newProject);
-    setActiveView('project');
+    if (!activeWs?.id) return;
+    try {
+      // One transactional call lands project + all its tasks atomically.
+      const newProjectId = await repoCreateProjectWithTasks({
+        workspaceId: activeWs.id,
+        project: { name: spec.name, emoji: spec.emoji || '✨', color: T.purple },
+        tasks: (spec.tasks || []).map(t => ({
+          title: t.title,
+          priority: t.priority || 'medium',
+          tags: t.tags || [],
+        })),
+      });
+      const newProject = { id: newProjectId, name: spec.name, emoji: spec.emoji || '✨', color: T.purple, cover: 'purple', favorite: false, members: 1, lastActive: Date.now() };
+      // Re-pull from the DB so IDs line up exactly with what the RPC inserted.
+      const { workspaces: fresh, tasksById: tFresh } = await repoLoadAll();
+      setWorkspaces(fresh);
+      setTasksById(tFresh);
+      const refreshedWs = fresh.find(w => w.id === activeWs.id);
+      setActiveWs(refreshedWs || activeWs);
+      const refreshedProject = refreshedWs?.projects.find(p => p.id === newProjectId) || newProject;
+      setActiveProject(refreshedProject);
+      setActiveView('project');
+    } catch (err) {
+      alert('Could not create project: ' + (err?.message || err));
+    }
   };
 
-  if (!loaded) return <div style={{width:'100vw', height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:T.bg, fontFamily:FT}}>
+  // ─── Gates ───
+  const configured = !!sb;
+  if (userId === null) {
+    return <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.bg, fontFamily: FT }}>
+      <style>{CSS}</style>
+      <Loader2 size={22} color={T.coral} style={{ animation: 'spin 1s linear infinite' }}/>
+    </div>;
+  }
+  if (configured && userId === false) {
+    return <>
+      <style>{CSS}</style>
+      <SignInGate />
+    </>;
+  }
+  if (loaded && workspaces.length === 0) {
+    return <>
+      <style>{CSS}</style>
+      <OnboardingPanel onCreate={createWorkspace} />
+    </>;
+  }
+  if (!loaded) return <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.bg, fontFamily: FT }}>
     <style>{CSS}</style>
-    <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:12}}>
-      <div style={{width:42, height:42, borderRadius:9, background:`linear-gradient(135deg, ${T.coral}, ${T.purple})`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22}}>🔺</div>
-      <Loader2 size={18} color={T.coral} style={{animation:'spin 1s linear infinite'}}/>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+      <div style={{ width: 42, height: 42, borderRadius: 9, background: `linear-gradient(135deg, ${T.coral}, ${T.purple})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>🔺</div>
+      <Loader2 size={18} color={T.coral} style={{ animation: 'spin 1s linear infinite' }}/>
     </div>
   </div>;
 
