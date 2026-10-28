@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { subscribeTable } from "./lib/realtime.js";
 import {
   Plus, Search, ChevronDown, ChevronRight, MoreHorizontal, Users, Settings,
   Grid3x3, Share2, Bot, Sparkles, LayoutGrid, List as ListIcon, Columns3,
@@ -121,11 +122,25 @@ async function callLLM(body) {
 // ─── Agent runtime client (Base44 Superagent-style, routed via /agent/:name) ───
 const AGENT_ENDPOINT = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_LLM_PROXY_URL?.replace('/llm','/agent'))
   || '/api/agent';
-async function callAgent(agentName, message, userId = 'anonymous') {
+// Per-tab fallback uid used only if auth init failed and window.__gem.userId
+// never got populated. Still per-visitor (not shared across tabs/browsers).
+let __tabFallbackUid = null;
+function tabFallbackUid() {
+  if (!__tabFallbackUid) {
+    try { __tabFallbackUid = crypto.randomUUID?.() || 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+    catch { __tabFallbackUid = 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+  }
+  return __tabFallbackUid;
+}
+async function callAgent(agentName, message, userId) {
+  // Caller may pass a userId; otherwise read the auth-bootstrapped one.
+  // Never falls back to the shared 'anonymous' string — that bled facts
+  // across visitors (Sourcery #5).
+  const uid = userId || window.__gem?.userId || tabFallbackUid();
   const res = await fetch(`${AGENT_ENDPOINT}/${encodeURIComponent(agentName)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, user_id: userId }),
+    body: JSON.stringify({ message, user_id: uid }),
   });
   if (!res.ok) throw new Error(`agent ${res.status}`);
   return res.json();
@@ -138,6 +153,64 @@ const AI_AGENTS = [
   {id:'ai4', name:'Analyst', icon:'📊', color:T.blue, desc:'Data analysis, metrics, financial modeling', prompt:'You are the Analyst agent. Provide data-driven insights, metrics breakdowns, and financial analysis.'},
   {id:'ai5', name:'Codex', icon:'💻', color:T.green, desc:'Code generation, PR reviews, debugging', prompt:'You are the Codex agent — principal engineer. Write and review production code (TypeScript/React/Next.js preferred).'},
 ];
+
+// ─── Agent health observability tile (reads live from agent_grades) ───
+function median(nums) {
+  if (!nums.length) return 0;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+function AgentHealthTile({ grades = [] }) {
+  if (!grades.length) return null;
+  const byAgent = grades.reduce((acc, g) => {
+    const a = acc[g.agent_id] ||= { count: 0, sumScore: 0, latencies: [], models: {} };
+    a.count += 1;
+    a.sumScore += Number(g.score) || 0;
+    a.latencies.push(Number(g.latency_ms) || 0);
+    a.models[g.model_used] = (a.models[g.model_used] || 0) + 1;
+    return acc;
+  }, {});
+  const rows = Object.entries(byAgent).map(([agent, s]) => ({
+    agent,
+    avgScore: Math.round(s.sumScore / s.count),
+    p50Latency: median(s.latencies),  // true median now, matches the "p50 ms" label
+    turns: s.count,
+    topModel: Object.entries(s.models).sort((a, b) => b[1] - a[1])[0]?.[0] || '—',
+  }));
+  return (
+    <div style={{
+      border: `1px solid ${T.bd}`, background: T.card, borderRadius: 10, padding: 14,
+      fontFamily: FT, color: T.tx, fontSize: 12,
+    }}>
+      <div style={{ color: T.sb, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 10 }}>
+        Agent Health · last {grades.length} turns
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ color: T.dm, fontWeight: 500 }}>
+            <th style={{ textAlign: 'left', padding: '4px 6px' }}>Agent</th>
+            <th style={{ textAlign: 'right', padding: '4px 6px' }}>Score</th>
+            <th style={{ textAlign: 'right', padding: '4px 6px' }}>p50 ms</th>
+            <th style={{ textAlign: 'right', padding: '4px 6px' }}>Turns</th>
+            <th style={{ textAlign: 'left', padding: '4px 6px' }}>Top model</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.agent} style={{ borderTop: `1px solid ${T.bd}` }}>
+              <td style={{ padding: '6px', fontWeight: 500 }}>{r.agent}</td>
+              <td style={{ padding: '6px', textAlign: 'right', color: r.avgScore >= 75 ? T.green : r.avgScore >= 50 ? T.yellow : T.red }}>{r.avgScore}</td>
+              <td style={{ padding: '6px', textAlign: 'right', color: T.sb }}>{r.p50Latency}</td>
+              <td style={{ padding: '6px', textAlign: 'right', color: T.sb }}>{r.turns}</td>
+              <td style={{ padding: '6px', color: T.sb, fontFamily: MN, fontSize: 11 }}>{r.topModel}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 const TEMPLATES = [
   {id:'tp1', name:'Portal', icon:'🏛️', desc:'Internal company portal with teams & docs'},
@@ -369,7 +442,7 @@ function Sidebar({workspaces, activeWs, setActiveWs, activeView, setActiveView, 
 }
 
 // ═══ HOME VIEW (matches your screenshot exactly) ═══════════════════════════
-function HomeView({workspace, projects, onOpenProject, onCreateProject, onAIGenerate}) {
+function HomeView({workspace, projects, onOpenProject, onCreateProject, onAIGenerate, recentGrades = []}) {
   const[prompt, setPrompt] = useState('');
   const[selectedAgent, setSelectedAgent] = useState('TSK-Auto');
   const[generating, setGenerating] = useState(false);
@@ -577,6 +650,11 @@ function HomeView({workspace, projects, onOpenProject, onCreateProject, onAIGene
         <span style={{fontSize:13, fontWeight:500, color:T.sb}}>New app</span>
       </div>
     </div>
+
+    {/* Agent observability — only renders when agent_grades has rows */}
+    {recentGrades.length > 0 && <div style={{marginTop: 28}}>
+      <AgentHealthTile grades={recentGrades}/>
+    </div>}
   </div>;
 }
 
@@ -1220,6 +1298,95 @@ export default function GEMTaskadeClone() {
   useEffect(() => { if (loaded) DB.s('taskade:workspaces', workspaces); }, [workspaces, loaded]);
   useEffect(() => { if (loaded) DB.s('taskade:tasks', tasksById); }, [tasksById, loaded]);
 
+  // ─── Cross-tab sync via BroadcastChannel (set up by storage adapter) ───
+  // Another tab wrote to kv — refetch the affected key so this tab stays current.
+  useEffect(() => {
+    if (!loaded || !window.storage?.onKeyChange) return;
+    return window.storage.onKeyChange(async (key) => {
+      if (key === 'taskade:workspaces') {
+        const w = await DB.g('taskade:workspaces');
+        if (w) { setWorkspaces(w); setActiveWs(prev => w.find(x => x.id === prev?.id) || w[0]); }
+      } else if (key === 'taskade:tasks') {
+        const t = await DB.g('taskade:tasks');
+        if (t) setTasksById(t);
+      }
+    });
+  }, [loaded]);
+
+  // ─── Supabase Realtime subscriptions ───
+  // Current SPA state uses local uid() ids and persists through the kv table,
+  // not relational projects/tasks. These subscriptions are therefore active
+  // only for installations that have migrated the SPA onto relational IDs
+  // (future Phase 3). Until then, task/project events arrive but no-op
+  // because row.project_id won't match any SPA project.
+  const [recentGrades, setRecentGrades] = useState([]);
+  // Normalize a Postgres row to the camelCase shape App.jsx task UI expects.
+  const toUiTask = (row) => row && ({
+    ...row,
+    dueDate: row.due_date ?? row.dueDate ?? null,
+    subtasks: row.subtasks ?? [],
+    tags: row.tags ?? [],
+  });
+  useEffect(() => {
+    const sb = window.__gem?.supabase;
+    if (!sb || !loaded) return;
+    const unsubs = [
+      subscribeTable(sb, 'tasks', '', (payload) => {
+        // DELETE payloads often carry only `old` with the primary key.
+        if (payload.eventType === 'DELETE') {
+          const old = payload.old || {};
+          setTasksById(prev => {
+            const next = { ...prev };
+            for (const [pid, list] of Object.entries(prev)) {
+              if (!old.project_id || old.project_id === pid) {
+                next[pid] = list.filter(t => t.id !== old.id);
+              }
+            }
+            return next;
+          });
+          return;
+        }
+        const row = toUiTask(payload.new);
+        if (!row?.project_id) return;
+        setTasksById(prev => {
+          const list = prev[row.project_id] || [];
+          const next = list.filter(t => t.id !== row.id);
+          next.push(row);
+          return { ...prev, [row.project_id]: next };
+        });
+      }),
+      // Projects — also only effective in relational mode (Phase 3).
+      subscribeTable(sb, 'projects', '', (payload) => {
+        if (!payload.new) return;
+        setWorkspaces(prev => prev.map(w => w.id === payload.new.workspace_id
+          ? { ...w, projects: [payload.new, ...w.projects.filter(p => p.id !== payload.new.id)] }
+          : w));
+      }),
+      // Agent grades — merge into state so initial query race doesn't drop
+      // a realtime INSERT that landed first (Sourcery #15).
+      subscribeTable(sb, 'agent_grades', '', (payload) => {
+        if (payload.eventType !== 'INSERT') return;
+        setRecentGrades(prev => {
+          if (prev.some(g => g.id === payload.new.id)) return prev;
+          return [payload.new, ...prev].slice(0, 20);
+        });
+      }),
+    ];
+    // Seed the grade tile. Merge with any realtime rows already received.
+    sb.from('agent_grades').select('id,agent_id,score,model_used,latency_ms,created_at')
+      .order('created_at', { ascending: false }).limit(20)
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        setRecentGrades(prev => {
+          const seen = new Set(prev.map(g => g.id).filter(Boolean));
+          const merged = [...prev, ...data.filter(g => !seen.has(g.id))];
+          return merged.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 20);
+        });
+      });
+    return () => unsubs.forEach(u => u && u());
+  }, [loaded]);
+  window.__gem_recentGrades = recentGrades; // dev-tools inspection
+
   const setProjectTasks = (projectId, tasks) => {
     setTasksById(prev => ({...prev, [projectId]: tasks}));
   };
@@ -1280,6 +1447,7 @@ export default function GEMTaskadeClone() {
         onOpenProject={p => {setActiveProject(p); setActiveView('project')}}
         onCreateProject={createProject}
         onAIGenerate={handleAIGenerate}
+        recentGrades={recentGrades}
       />}
       {activeView==='project' && activeProject && <ProjectView
         project={activeProject}

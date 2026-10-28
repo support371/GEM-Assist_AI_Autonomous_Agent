@@ -24,12 +24,14 @@ export class Memory {
       const key = `${this.agent}:${this.user}:conv`;
       return (inMem.get(key) || []).slice(-limit);
     }
-    const data = await this._sb(`agent_conversations?agent_id=eq.${this.agent}&owner_id=eq.${this.user}&select=messages&limit=1`);
-    const msgs = data?.[0]?.messages || [];
-    return msgs.slice(-limit);
+    // Append-only read: last N turns from the authoritative log.
+    const rows = await this._sb(
+      `agent_conversation_turns?agent_id=eq.${this.agent}&owner_id=eq.${this.user}&select=role,content,created_at&order=created_at.desc&limit=${limit}`,
+    );
+    return (rows || []).reverse().map(r => ({ role: r.role, content: r.content, ts: Date.parse(r.created_at) }));
   }
 
-  async appendShortTerm(role, content) {
+  async appendShortTerm(role, content, { toolName = null, modelUsed = null, latencyMs = null } = {}) {
     const turn = { role, content, ts: Date.now() };
     if (!this.hasSB) {
       const key = `${this.agent}:${this.user}:conv`;
@@ -37,13 +39,12 @@ export class Memory {
       inMem.set(key, [...prev, turn].slice(-50));
       return;
     }
-    const existing = await this._sb(`agent_conversations?agent_id=eq.${this.agent}&owner_id=eq.${this.user}&select=id,messages&limit=1`);
-    if (existing?.[0]) {
-      const msgs = [...(existing[0].messages || []), turn].slice(-50);
-      await this._sb(`agent_conversations?id=eq.${existing[0].id}`, 'PATCH', { messages: msgs, updated_at: new Date().toISOString() });
-    } else {
-      await this._sb('agent_conversations', 'POST', { agent_id: this.agent, owner_id: this.user, messages: [turn] });
-    }
+    // Atomic single-row INSERT — no read-modify-write race.
+    await this._sb('agent_conversation_turns', 'POST', {
+      agent_id: this.agent, owner_id: this.user,
+      role, content: String(content).slice(0, 32000),
+      tool_name: toolName, model_used: modelUsed, latency_ms: latencyMs,
+    });
   }
 
   // ─── Long-term: durable facts ───

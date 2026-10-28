@@ -2,9 +2,17 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import { installStorage } from './lib/storage.js';
+import { initAuth, currentUserId } from './lib/auth.js';
 
 installStorage();
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode><App /></React.StrictMode>
-);
+// Bootstrap auth before mount so App reads a stable user id on first render.
+// Wrapped in an async IIFE because the Vite build targets ES2020, which
+// predates top-level await.
+(async () => {
+  await initAuth(window.__gem?.supabase);
+  window.__gem = { ...(window.__gem || {}), userId: currentUserId() };
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <React.StrictMode><App /></React.StrictMode>
+  );
+})();

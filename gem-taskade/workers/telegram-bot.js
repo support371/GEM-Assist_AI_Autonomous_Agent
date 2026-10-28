@@ -77,16 +77,33 @@ export default {
 
     // /publish · admin-guarded channel post
     if (path === '/publish' && request.method === 'POST') {
+      if (!env.ADMIN_SECRET) return new Response('Server misconfigured', { status: 503 });
       if (request.headers.get('authorization') !== `Bearer ${env.ADMIN_SECRET}`) return new Response('Forbidden', { status: 403 });
       const body = await request.json();
       return json(await postToChannel(env, body.text, body.photo_url));
+    }
+
+    // /embed · bge-base embeddings (admin-guarded, powers ingest-knowledge.mjs)
+    if (path === '/embed' && request.method === 'POST') {
+      // Reject if admin secret isn't configured — otherwise 'Bearer undefined'
+      // from a bad deploy would let any caller consume the Workers AI quota.
+      if (!env.ADMIN_SECRET) return new Response('Server misconfigured', { status: 503 });
+      if (request.headers.get('authorization') !== `Bearer ${env.ADMIN_SECRET}`) return new Response('Forbidden', { status: 403 });
+      try {
+        const body = await request.json();
+        const texts = Array.isArray(body.text) ? body.text : [body.text];
+        if (!env.AI) return json({ error: 'AI binding not configured' }, 500);
+        const out = await env.AI.run('@cf/baai/bge-base-en-v1.5', { text: texts });
+        return json({ data: (out?.data || []).map((v, i) => ({ embedding: v, index: i })), model: '@cf/baai/bge-base-en-v1.5' }, 200, corsHeaders(request, env));
+      } catch (e) { return json({ error: { message: e.message } }, 500, corsHeaders(request, env)); }
     }
 
     return new Response('Not Found', { status: 404 });
   },
 
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runDailyDigest(env));
+    // Daily digest + agent-memory rollup. Both are tolerant of individual failure.
+    ctx.waitUntil(Promise.allSettled([runDailyDigest(env), runMemoryRollup(env)]));
   },
 };
 
@@ -248,6 +265,45 @@ async function logMessage(env, chatId, direction, content, model) {
 async function latestContentItem(env) {
   const d = await sbRequest(env, `content_items?status=eq.ready&order=created_at.desc&limit=1`);
   return d?.[0];
+}
+
+// ───────── Daily memory rollup cron ─────────
+// Compresses yesterday's agent_conversations into agent_summaries rows per
+// (agent_id, owner_id). Caps context-block growth over months of use.
+
+async function runMemoryRollup(env) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return;
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const until = new Date().toISOString();
+  // Read append-only turns written by Memory.appendShortTerm (new schema).
+  const rows = await sbRequest(env, `agent_conversation_turns?created_at=gte.${since}&select=agent_id,owner_id,role,content,created_at&order=created_at.asc`);
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const groups = new Map();
+  for (const r of rows) {
+    const key = `${r.agent_id}::${r.owner_id || 'anonymous'}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ role: r.role, content: r.content });
+  }
+  for (const [key, msgs] of groups) {
+    if (msgs.length < 4) continue;
+    const [agent_id, owner_raw] = key.split('::');
+    const owner_id = owner_raw === 'anonymous' ? null : owner_raw;
+    const transcript = msgs.slice(-30).map(m => `${m.role}: ${String(m.content).slice(0, 300)}`).join('\n');
+    const prompt = `Summarize this agent↔user exchange in <=120 words. Keep decisions, blockers, open questions, named entities. Omit greetings.\n\n${transcript}`;
+    try {
+      const chain = routeModel('fast', [], env);
+      if (!chain.length) continue;
+      const resp = await callProvider(chain[0], env, { messages: [{ role: 'user', content: prompt }], max_tokens: 300 });
+      const summary = resp?.content?.[0]?.text?.trim();
+      if (!summary) continue;
+      await sbRequest(env, 'agent_summaries', 'POST', {
+        agent_id, owner_id,
+        summary, period_start: since, period_end: until, model_used: resp.model,
+      });
+    } catch (err) {
+      console.error('[rollup] failed for', key, err?.message || err);
+    }
+  }
 }
 
 // ───────── Daily digest cron ─────────
