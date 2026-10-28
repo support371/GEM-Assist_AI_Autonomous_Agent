@@ -1,0 +1,22 @@
+name = "gem-bot"
+main = "telegram-bot.js"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Cloudflare Workers AI binding — free tier: 10,000 Neurons/day
+[ai]
+binding = "AI"
+
+# Daily digest at 07:00 UTC
+[triggers]
+crons = ["0 7 * * *"]
+
+# Rules to let bundler pull in JSON agent definitions
+[[rules]]
+type = "ESModule"
+globs = ["**/*.js"]
+
+[[rules]]
+type = "Text"
+globs = ["**/*.md"]
