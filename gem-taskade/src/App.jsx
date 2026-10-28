@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { subscribeTable } from "./lib/realtime.js";
 import {
   Plus, Search, ChevronDown, ChevronRight, MoreHorizontal, Users, Settings,
   Grid3x3, Share2, Bot, Sparkles, LayoutGrid, List as ListIcon, Columns3,
@@ -121,11 +122,15 @@ async function callLLM(body) {
 // ─── Agent runtime client (Base44 Superagent-style, routed via /agent/:name) ───
 const AGENT_ENDPOINT = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_LLM_PROXY_URL?.replace('/llm','/agent'))
   || '/api/agent';
-async function callAgent(agentName, message, userId = 'anonymous') {
+async function callAgent(agentName, message, userId) {
+  // Caller may pass a userId; otherwise read the auth-bootstrapped one.
+  // Never falls back to the shared 'anonymous' string — that bled facts
+  // across visitors (Sourcery #5).
+  const uid = userId || window.__gem?.userId || 'device-' + (Math.random().toString(36).slice(2, 10));
   const res = await fetch(`${AGENT_ENDPOINT}/${encodeURIComponent(agentName)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, user_id: userId }),
+    body: JSON.stringify({ message, user_id: uid }),
   });
   if (!res.ok) throw new Error(`agent ${res.status}`);
   return res.json();
@@ -138,6 +143,58 @@ const AI_AGENTS = [
   {id:'ai4', name:'Analyst', icon:'📊', color:T.blue, desc:'Data analysis, metrics, financial modeling', prompt:'You are the Analyst agent. Provide data-driven insights, metrics breakdowns, and financial analysis.'},
   {id:'ai5', name:'Codex', icon:'💻', color:T.green, desc:'Code generation, PR reviews, debugging', prompt:'You are the Codex agent — principal engineer. Write and review production code (TypeScript/React/Next.js preferred).'},
 ];
+
+// ─── Agent health observability tile (reads live from agent_grades) ───
+function AgentHealthTile({ grades = [] }) {
+  if (!grades.length) return null;
+  const byAgent = grades.reduce((acc, g) => {
+    const a = acc[g.agent_id] ||= { count: 0, sumScore: 0, sumLatency: 0, models: {} };
+    a.count += 1;
+    a.sumScore += Number(g.score) || 0;
+    a.sumLatency += Number(g.latency_ms) || 0;
+    a.models[g.model_used] = (a.models[g.model_used] || 0) + 1;
+    return acc;
+  }, {});
+  const rows = Object.entries(byAgent).map(([agent, s]) => ({
+    agent,
+    avgScore: Math.round(s.sumScore / s.count),
+    avgLatency: Math.round(s.sumLatency / s.count),
+    turns: s.count,
+    topModel: Object.entries(s.models).sort((a, b) => b[1] - a[1])[0]?.[0] || '—',
+  }));
+  return (
+    <div style={{
+      border: `1px solid ${T.bd}`, background: T.card, borderRadius: 10, padding: 14,
+      fontFamily: FT, color: T.tx, fontSize: 12,
+    }}>
+      <div style={{ color: T.sb, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 10 }}>
+        Agent Health · last {grades.length} turns
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ color: T.dm, fontWeight: 500 }}>
+            <th style={{ textAlign: 'left', padding: '4px 6px' }}>Agent</th>
+            <th style={{ textAlign: 'right', padding: '4px 6px' }}>Score</th>
+            <th style={{ textAlign: 'right', padding: '4px 6px' }}>p50 ms</th>
+            <th style={{ textAlign: 'right', padding: '4px 6px' }}>Turns</th>
+            <th style={{ textAlign: 'left', padding: '4px 6px' }}>Top model</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.agent} style={{ borderTop: `1px solid ${T.bd}` }}>
+              <td style={{ padding: '6px', fontWeight: 500 }}>{r.agent}</td>
+              <td style={{ padding: '6px', textAlign: 'right', color: r.avgScore >= 75 ? T.green : r.avgScore >= 50 ? T.yellow : T.red }}>{r.avgScore}</td>
+              <td style={{ padding: '6px', textAlign: 'right', color: T.sb }}>{r.avgLatency}</td>
+              <td style={{ padding: '6px', textAlign: 'right', color: T.sb }}>{r.turns}</td>
+              <td style={{ padding: '6px', color: T.sb, fontFamily: MN, fontSize: 11 }}>{r.topModel}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 const TEMPLATES = [
   {id:'tp1', name:'Portal', icon:'🏛️', desc:'Internal company portal with teams & docs'},
@@ -369,7 +426,7 @@ function Sidebar({workspaces, activeWs, setActiveWs, activeView, setActiveView, 
 }
 
 // ═══ HOME VIEW (matches your screenshot exactly) ═══════════════════════════
-function HomeView({workspace, projects, onOpenProject, onCreateProject, onAIGenerate}) {
+function HomeView({workspace, projects, onOpenProject, onCreateProject, onAIGenerate, recentGrades = []}) {
   const[prompt, setPrompt] = useState('');
   const[selectedAgent, setSelectedAgent] = useState('TSK-Auto');
   const[generating, setGenerating] = useState(false);
@@ -577,6 +634,11 @@ function HomeView({workspace, projects, onOpenProject, onCreateProject, onAIGene
         <span style={{fontSize:13, fontWeight:500, color:T.sb}}>New app</span>
       </div>
     </div>
+
+    {/* Agent observability — only renders when agent_grades has rows */}
+    {recentGrades.length > 0 && <div style={{marginTop: 28}}>
+      <AgentHealthTile grades={recentGrades}/>
+    </div>}
   </div>;
 }
 
@@ -1220,6 +1282,53 @@ export default function GEMTaskadeClone() {
   useEffect(() => { if (loaded) DB.s('taskade:workspaces', workspaces); }, [workspaces, loaded]);
   useEffect(() => { if (loaded) DB.s('taskade:tasks', tasksById); }, [tasksById, loaded]);
 
+  // ─── Cross-tab sync via BroadcastChannel (set up by storage adapter) ───
+  // Another tab wrote to kv — refetch the affected key so this tab stays current.
+  useEffect(() => {
+    if (!loaded || !window.storage?.onKeyChange) return;
+    return window.storage.onKeyChange(async (key) => {
+      if (key === 'taskade:workspaces') {
+        const w = await DB.g('taskade:workspaces');
+        if (w) { setWorkspaces(w); setActiveWs(prev => w.find(x => x.id === prev?.id) || w[0]); }
+      } else if (key === 'taskade:tasks') {
+        const t = await DB.g('taskade:tasks');
+        if (t) setTasksById(t);
+      }
+    });
+  }, [loaded]);
+
+  // ─── Supabase Realtime subscriptions (projects, tasks, agent_grades) ───
+  const [recentGrades, setRecentGrades] = useState([]);
+  useEffect(() => {
+    const sb = window.__gem?.supabase;
+    if (!sb || !loaded) return;
+    const unsubs = [
+      // Live task + project updates land straight into state without refresh.
+      subscribeTable(sb, 'tasks', '', (payload) => {
+        const row = payload.new || payload.old;
+        if (!row?.project_id) return;
+        setTasksById(prev => {
+          const list = prev[row.project_id] || [];
+          if (payload.eventType === 'DELETE') return { ...prev, [row.project_id]: list.filter(t => t.id !== row.id) };
+          const next = list.filter(t => t.id !== row.id);
+          if (payload.eventType !== 'DELETE') next.push(row);
+          return { ...prev, [row.project_id]: next };
+        });
+      }),
+      // Keep a rolling window of recent agent grades for the observability tile.
+      subscribeTable(sb, 'agent_grades', '', (payload) => {
+        if (payload.eventType !== 'INSERT') return;
+        setRecentGrades(prev => [payload.new, ...prev].slice(0, 20));
+      }),
+    ];
+    // Seed the grade tile with the last 20 rows at mount time.
+    sb.from('agent_grades').select('agent_id,score,model_used,latency_ms,created_at')
+      .order('created_at', { ascending: false }).limit(20)
+      .then(({ data, error }) => { if (!error && data) setRecentGrades(data); });
+    return () => unsubs.forEach(u => u && u());
+  }, [loaded]);
+  window.__gem_recentGrades = recentGrades; // dev-tools inspection; AgentHealthTile reads via prop below
+
   const setProjectTasks = (projectId, tasks) => {
     setTasksById(prev => ({...prev, [projectId]: tasks}));
   };
@@ -1280,6 +1389,7 @@ export default function GEMTaskadeClone() {
         onOpenProject={p => {setActiveProject(p); setActiveView('project')}}
         onCreateProject={createProject}
         onAIGenerate={handleAIGenerate}
+        recentGrades={recentGrades}
       />}
       {activeView==='project' && activeProject && <ProjectView
         project={activeProject}
