@@ -22,8 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: cd gem-taskade && npm ci --no-audit --no-fund
+        with: { node-version: '20' }
+      - run: cd gem-taskade && npm install --no-audit --no-fund --no-package-lock
       - run: cd gem-taskade && npm run agents:build
       - name: Syntax check workers
         run: |
@@ -40,8 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: cd gem-taskade && npm ci --no-audit --no-fund
+        with: { node-version: '20' }
+      - run: cd gem-taskade && npm install --no-audit --no-fund --no-package-lock
       - name: Build
         run: cd gem-taskade && npm run build
         env:
@@ -62,8 +62,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: cd gem-taskade && npm ci --no-audit --no-fund
+        with: { node-version: '20' }
+      - run: cd gem-taskade && npm install --no-audit --no-fund --no-package-lock
       - name: GEM Taskade Deploy to Cloudflare
         uses: cloudflare/wrangler-action@v3
         with:
